@@ -145,3 +145,30 @@ Pengujian berikutnya mulai dari `pengujian 1.csv`. Refresh `hasil_pengujian.html
 setelah pembersihan. Dataset input, kode, kalibrasi dan log hasil pada VM210 tetap
 tersimpan. Script menolak pembersihan ketika client pengujian lokal atau batch
 scheduler masih aktif. Tutup Excel jika CSV sedang dibuka.
+
+## Mengosongkan service log sebelum demo
+
+Lakukan setelah pengujian selesai. Masuk ke VM210 dari PowerShell:
+
+```powershell
+ssh root@192.168.56.10
+```
+
+Di terminal SSH VM210, kosongkan isi log:
+
+```sh
+truncate -s 0 /var/log/sufferage-scheduler/service.log
+```
+
+Service tetap berjalan dan menulis log baru. CSV hasil pengujian dan dataset tetap
+tersimpan. Perintah ini menghapus isi log lama secara permanen; jalankan hanya jika
+log tersebut sudah tidak diperlukan. Script Windows `hapus_hasil.ps1` hanya
+membersihkan hasil lokal dan tidak menjalankan perintah ini.
+
+Untuk melihat log baru saat demo:
+
+```sh
+tail -f /var/log/sufferage-scheduler/service.log
+```
+
+Tekan `Ctrl+C` untuk berhenti menampilkan log; service scheduler tetap berjalan.
