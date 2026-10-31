@@ -42,6 +42,31 @@ Pilihan 240 dan 500 task juga tersedia; [lihat komposisi dataset](datasets/READM
 Dataset 40 task tetap disimpan untuk referensi hasil verifikasi sebelumnya.
 Task ID, urutan dan ukuran sama pada pengujian ulang.
 
+### Pilih jumlah task
+
+Jalankan dari `E:\testsokarealworld`, satu batch pada satu waktu:
+
+```powershell
+# 120 task: 60 ringan, 36 sedang, 24 berat (default)
+.\windows\demo_scheduler.ps1
+
+# 240 task: 120 ringan, 72 sedang, 48 berat
+.\windows\demo_scheduler.ps1 -Dataset datasets\demo240.csv
+
+# 500 task: 250 ringan, 150 sedang, 100 berat
+.\windows\demo_scheduler.ps1 -Dataset datasets\demo500.csv
+```
+
+Setiap perintah di atas mengkalibrasi ulang ETC sebelum batch. Untuk mengulang
+pengujian dengan ETC yang sama, tambahkan `-ReuseCalibration`, misalnya:
+
+```powershell
+.\windows\demo_scheduler.ps1 -Dataset datasets\demo240.csv -ReuseCalibration
+```
+
+Tunggu batch selesai sebelum menjalankan perintah berikutnya. Task yang lebih
+banyak menambah waktu planning dan eksekusi pada laptop emulasi.
+
 Terminal lain untuk membuktikan eksekusi pada vm210:
 
 ```powershell
