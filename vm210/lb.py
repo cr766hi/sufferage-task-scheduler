@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small experimental reverse proxy. Requires aiohttp; no backend changes.
+"""Small experimental reverse proxy. Requires aiohttp and the optional backend CPU workers.
 
 Latency includes the Sufferage batch wait. Capacity weights are model inputs,
 not measured CPU capacity. No artificial processing delays are injected.
@@ -31,6 +31,7 @@ class Backend:
     active: int = 0
     ready_time: float = 0.0
     cooldown_until: float = 0.0
+    task_url: str = ''
 
 
 def sufferage_plan(jobs, backends, now):
@@ -50,7 +51,10 @@ def sufferage_plan(jobs, backends, now):
             best_ct, _, best = times[0]
             difference = times[1][0] - best_ct if len(times) > 1 else 0.0
             choices.append((difference, -job.sequence, job, best, best_ct))
-        _, _, job, best, best_ct = max(choices, key=lambda item: item[:2])
+        difference, _, job, best, best_ct = max(choices, key=lambda item: item[:2])
+        job.sufferage_ms = difference * 1000
+        job.best_ct_ms = (best_ct - now) * 1000
+        job.second_ct_ms = (best_ct + difference - now) * 1000
         best.ready_time = best_ct
         result.append((job, best, job.work / best.capacity))
         remaining.remove(job)
@@ -66,6 +70,12 @@ class Job:
     timestamp: str
     work: float
     future: object
+    task_type: str = ''
+    sufferage_ms: float = 0.0
+    best_ct_ms: float = 0.0
+    second_ct_ms: float = 0.0
+    batch_id: int = 0
+    assignment_order: int = 0
 
 
 class LoadBalancer:
@@ -75,6 +85,15 @@ class LoadBalancer:
                          Backend('vm102', 'http://192.168.56.22', 2),
                          Backend('vm201', 'http://192.168.56.31', 1),
                          Backend('vm202', 'http://192.168.56.32', 2)]
+        profile_path = Path(getattr(args, 'task_profiles', None) or Path(__file__).with_name('task_profiles.json'))
+        if not profile_path.exists():
+            profile_path = Path(__file__).resolve().parents[1] / 'workload/task_profiles.json'
+        self.profile = json.loads(profile_path.read_text())
+        self.task_profiles = self.profile['tasks']
+        for backend in self.backends:
+            if getattr(args, 'task_port', 0):
+                backend.task_url = backend.url + ':' + str(args.task_port)
+        self.batch_sequence = itertools.count(1)
         self.pending = asyncio.Queue(maxsize=args.queue_limit)
         self.sequence = itertools.count()
         self.rr = 0
@@ -87,7 +106,8 @@ class LoadBalancer:
         self.log = csv.writer(self.log_file)
         self.log.writerow(['timestamp', 'algoritma', 'backend', 'response_time_ms',
                            'status', 'request_id', 'method', 'path', 'queue_ms',
-                           'upstream_ms', 'estimated_work_ms', 'error'])
+                           'upstream_ms', 'estimated_work_ms', 'error', 'task_type',
+                           'sufferage_ms', 'best_ct_ms', 'second_ct_ms', 'batch_id', 'assignment_order'])
         self.log_file.flush()
 
     async def start(self, app):
@@ -119,6 +139,12 @@ class LoadBalancer:
             async with self.session.get(backend.url + '/', timeout=ClientTimeout(total=1.5)) as response:
                 await response.read()
                 backend.healthy = response.status == 200
+            if backend.healthy and backend.task_url:
+                async with self.session.get(backend.task_url + '/health', timeout=ClientTimeout(total=2)) as response:
+                    health = await response.json()
+                    backend.healthy = (response.status == 200 and health.get('backend') == backend.name
+                        and health.get('capacity') == backend.capacity
+                        and health.get('workload') == self.profile['workload_id'])
         except (OSError, asyncio.TimeoutError) as exc:
             backend.healthy = False
         except Exception as exc:
@@ -134,16 +160,25 @@ class LoadBalancer:
     async def health(self, request):
         return web.json_response({'algorithm': self.args.mode,
                                   'queued': self.pending.qsize(),
+                                  'workload': self.profile['workload_id'],
+                                  'task_profiles': self.task_profiles,
+                                  'work_estimates_ms': {key: round(value * 1000, 3) for key, value in self.estimates.items()},
                                   'backends': [{'name': b.name, 'healthy': b.healthy,
                                                 'active': b.active, 'capacity': b.capacity}
                                                for b in self.backends]})
+
+    def estimated_work(self, path):
+        kind = path.removeprefix('/task/') if path.startswith('/task/') else ''
+        initial_ms = self.task_profiles.get(kind, {}).get('initial_work_ms', self.args.initial_work_ms)
+        return self.estimates.get(path, initial_ms / 1000)
 
     async def handle(self, request):
         now = time.monotonic()
         job = Job(next(self.sequence), request, await request.read(), now,
                   datetime.now(timezone.utc).isoformat(),
-                  self.estimates.get(request.path, self.args.initial_work_ms / 1000),
-                  asyncio.get_running_loop().create_future())
+                  self.estimated_work(request.path),
+                  asyncio.get_running_loop().create_future(),
+                  task_type=request.path.removeprefix('/task/') if request.path.startswith('/task/') else '')
         try:
             self.pending.put_nowait(job)
         except asyncio.QueueFull:
@@ -155,7 +190,9 @@ class LoadBalancer:
                            round((time.monotonic() - job.arrival) * 1000, 3), status,
                            job.request.headers.get('X-Request-ID', str(job.sequence)),
                            job.request.method, job.request.path_qs, round(queue_ms, 3),
-                           round(upstream_ms, 3), round(job.work * 1000, 3), error])
+                           round(upstream_ms, 3), round(job.work * 1000, 3), error,
+                           job.task_type, round(job.sufferage_ms, 3), round(job.best_ct_ms, 3),
+                           round(job.second_ct_ms, 3), job.batch_id, job.assignment_order])
 
     def fail(self, job, status, message):
         self.record(job, 'none', status, error=message)
@@ -176,6 +213,9 @@ class LoadBalancer:
                         batch.append(await asyncio.wait_for(self.pending.get(), remaining))
                     except asyncio.TimeoutError:
                         break
+            batch_id = next(self.batch_sequence)
+            for job in batch:
+                job.batch_id = batch_id
             now = time.monotonic()
             available = [b for b in self.backends if b.healthy and b.cooldown_until <= now]
             if not available:
@@ -184,7 +224,8 @@ class LoadBalancer:
                 continue
             if self.args.mode == 'sufferage':
                 plan = sufferage_plan(batch, available, now)
-                for job, backend, predicted in plan:
+                for order, (job, backend, predicted) in enumerate(plan, 1):
+                    job.assignment_order = order
                     self.dispatch(job, backend, predicted)
             else:
                 for job in batch:
@@ -212,7 +253,7 @@ class LoadBalancer:
             headers = {k: v for k, v in job.request.headers.items()
                        if k.lower() not in HOP_HEADERS | connection_tokens | {'host'}}
             async with self.session.request(job.request.method,
-                    backend.url + job.request.path_qs, headers=headers,
+                    (backend.task_url if job.task_type and backend.task_url else backend.url) + job.request.path_qs, headers=headers,
                     data=job.body or None, allow_redirects=False) as response:
                 body = await response.read()
                 elapsed = time.monotonic() - start
@@ -221,10 +262,26 @@ class LoadBalancer:
                                if k.lower() not in HOP_HEADERS | response_connection}
                 out_headers['X-LB-Backend'] = backend.name
                 out_headers['X-LB-Algorithm'] = self.args.mode
+                out_headers.update({
+                    'X-LB-Estimated-Work-Ms': str(round(job.work * 1000, 3)),
+                    'X-LB-Queue-Ms': str(round(queue_ms, 3)),
+                    'X-LB-Upstream-Ms': str(round(elapsed * 1000, 3)),
+                    'X-LB-Sufferage-Ms': str(round(job.sufferage_ms, 3)),
+                    'X-LB-Best-CT-Ms': str(round(job.best_ct_ms, 3)),
+                    'X-LB-Second-CT-Ms': str(round(job.second_ct_ms, 3)),
+                    'X-LB-Batch-ID': str(job.batch_id),
+                    'X-LB-Assignment-Order': str(job.assignment_order)})
                 result = web.Response(status=response.status, headers=out_headers, body=body)
                 if response.status < 500:
-                    previous = self.estimates.get(job.request.path, self.args.initial_work_ms / 1000)
-                    self.estimates[job.request.path] = max(0.0001, .8 * previous + .2 * elapsed * backend.capacity)
+                    previous = self.estimated_work(job.request.path)
+                    observed_work = elapsed * backend.capacity
+                    # CPU time summed across worker processes excludes waiting in the worker queue.
+                    if job.task_type and response.status == 200:
+                        try:
+                            observed_work = max(.0001, float(response.headers['X-Worker-CPU-Ms']) / 1000)
+                        except (KeyError, ValueError):
+                            pass
+                    self.estimates[job.request.path] = max(0.0001, .8 * previous + .2 * observed_work)
                 self.record(job, backend.name, response.status, queue_ms, elapsed * 1000)
         except Exception as exc:
             backend.healthy = False
@@ -233,7 +290,9 @@ class LoadBalancer:
                         (time.monotonic() - start) * 1000,
                         type(exc).__name__ + ': ' + str(exc))
             result = web.Response(status=502, text='Upstream unavailable',
-                                  headers={'X-LB-Backend': backend.name})
+                                  headers={'X-LB-Backend': backend.name, 'X-LB-Algorithm': self.args.mode,
+                                           'X-Task-Type': job.task_type,
+                                           'X-LB-Estimated-Work-Ms': str(round(job.work * 1000, 3))})
         finally:
             backend.active -= 1
             backend.ready_time = max(time.monotonic(), backend.ready_time - predicted)
@@ -248,7 +307,9 @@ def main():
     parser.add_argument('--csv', required=True, help='New file; existing CSV is never overwritten')
     parser.add_argument('--batch-size', type=int, default=20)
     parser.add_argument('--batch-ms', type=float, default=75)
-    parser.add_argument('--timeout', type=float, default=3)
+    parser.add_argument('--timeout', type=float, default=20)
+    parser.add_argument('--task-port', type=int, default=8080)
+    parser.add_argument('--task-profiles', type=Path)
     parser.add_argument('--initial-work-ms', type=float, default=20)
     parser.add_argument('--queue-limit', type=int, default=1000)
     args = parser.parse_args()

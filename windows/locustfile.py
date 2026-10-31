@@ -1,7 +1,7 @@
 """Controlled, closed-loop HTTP workload. SCENARIO=stable|spike|fault.
 
 Fault injection is performed by the runner against VM 101, never a Proxmox host.
-The request mix is intentionally the existing nginx root page: uniform work.
+WORKLOAD=mixed (default) exercises real CPU tasks; uniform retains the nginx baseline.
 """
 import csv
 import json
@@ -14,6 +14,8 @@ from locust import HttpUser, LoadTestShape, constant_pacing, events, task
 
 SCENARIO = os.environ.get('SCENARIO', 'stable')
 DURATION = int(os.environ.get('DURATION', '60'))
+WORKLOAD = os.environ.get('WORKLOAD', 'mixed')
+PROFILES = json.loads((Path(__file__).resolve().parents[1] / 'workload/task_profiles.json').read_text())
 REQUEST_CSV = os.environ.get('REQUEST_CSV')
 writer = None
 handle = None
@@ -65,7 +67,9 @@ def request_log(request_type, name, response_time, response_length,
                 headers.get('X-LB-Backend', 'none'), headers.get('X-LB-Algorithm', ''),
                 response_time, response_length,
                 response.status_code if response is not None else 0,
-                str(exception) if exception else '', runner.user_count if runner else 0)
+                str(exception) if exception else '', runner.user_count if runner else 0,
+                task_type=(context or {}).get('task_type', 'uniform'),
+                scheduling=dict(headers))
         return
     if writer:
         writer.writerow([time.time(), SCENARIO, context.get('request_id', ''),
@@ -107,13 +111,29 @@ class BrowserUser(HttpUser):
     def homepage(self):
         self.counter += 1
         request_id = f'{self.user_id:x}-{self.counter}'
-        with self.client.get('/', timeout=8, name='nginx root',
+        kind = 'uniform'
+        path = '/'
+        name = 'nginx root'
+        if WORKLOAD == 'mixed':
+            kinds = list(PROFILES['tasks'])
+            kind = random.choices(kinds, weights=[PROFILES['tasks'][k]['weight'] for k in kinds])[0]
+            path = '/task/' + kind
+            name = 'task/' + kind
+        with self.client.get(path, timeout=25, name=name,
                              headers={'X-Request-ID': request_id},
-                             context={'request_id': request_id},
+                             context={'request_id': request_id, 'task_type': kind},
                              catch_response=True) as response:
             if response.status_code == 200 and not any(
                     name in response.text for name in ('vm101', 'vm102', 'vm201', 'vm202')):
                 response.failure('Unexpected backend page')
+            if response.status_code == 200 and WORKLOAD == 'mixed':
+                try:
+                    body = response.json()
+                    if (body.get('task_type') != kind or body.get('units') != PROFILES['tasks'][kind]['units']
+                            or body.get('workload') != PROFILES['workload_id'] or len(body.get('checksum', '')) != 64):
+                        response.failure('Unexpected CPU task result')
+                except ValueError:
+                    response.failure('CPU task did not return JSON')
 
 
 class ScenarioShape(LoadTestShape):

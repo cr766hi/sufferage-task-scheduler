@@ -4,3 +4,5 @@
 *.ps1 text eol=crlf
 *.sh text eol=lf
 vm210/openrc/* text eol=lf
+
+backends/worker/task-worker text eol=lf

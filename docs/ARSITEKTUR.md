@@ -6,11 +6,11 @@
 Laptop fisik Windows, 16 GB RAM
 └── VirtualBox
     ├── pve1: Proxmox VE, 4 GB RAM, 4 vCPU
-    │   ├── VM 101: vm101, nginx, 512 MB, 1 vCPU
-    │   └── VM 102: vm102, nginx, 512 MB, 2 vCPU
+    │   ├── VM 101: vm101, nginx + CPU worker, 512 MB, 1 vCPU
+    │   └── VM 102: vm102, nginx + CPU worker, 512 MB, 2 vCPU
     └── pve2: Proxmox VE, 4 GB RAM, 4 vCPU
-        ├── VM 201: vm201, nginx, 512 MB, 1 vCPU
-        ├── VM 202: vm202, nginx, 512 MB, 2 vCPU
+        ├── VM 201: vm201, nginx + CPU worker, 512 MB, 1 vCPU
+        ├── VM 202: vm202, nginx + CPU worker, 512 MB, 2 vCPU
         └── VM 210: vm-lb, Python LB, 1024 MB, 1 vCPU
 ```
 
@@ -23,10 +23,10 @@ tanpa akselerasi KVM, sehingga boot dan waktu respons dapat lambat.
 | Windows | 192.168.56.1 | `windows/locustfile.py`, `demo_locust.ps1` | Membuat beban dan mengukur respons klien |
 | pve1 | 192.168.56.11 | Proxmox VE; UI HTTPS port 8006 | Mengelola vm101 dan vm102 |
 | pve2 | 192.168.56.12 | Proxmox VE; UI HTTPS port 8006 | Mengelola vm201, vm202, vm210 |
-| vm101 | 192.168.56.21 | nginx + halaman `vm101` | Backend berbobot 1 |
-| vm102 | 192.168.56.22 | nginx + halaman `vm102` | Backend berbobot 2 |
-| vm201 | 192.168.56.31 | nginx + halaman `vm201` | Backend berbobot 1 |
-| vm202 | 192.168.56.32 | nginx + halaman `vm202` | Backend berbobot 2 |
+| vm101 | 192.168.56.21 | nginx :80 + Python worker :8080 + halaman `vm101` | Backend berbobot 1 |
+| vm102 | 192.168.56.22 | nginx :80 + Python worker :8080 + halaman `vm102` | Backend berbobot 2 |
+| vm201 | 192.168.56.31 | nginx :80 + Python worker :8080 + halaman `vm201` | Backend berbobot 1 |
+| vm202 | 192.168.56.32 | nginx :80 + Python worker :8080 + halaman `vm202` | Backend berbobot 2 |
 | vm210 | 192.168.56.10 | Python + aiohttp + OpenRC | LB Sufferage pada port 80 |
 
 Hostname guest VM 210 adalah `vm-lb`; nomor VM pada Proxmox tetap 210.
@@ -55,7 +55,20 @@ Salinan aktual dipisahkan pada `backends/vm101/`, `vm102/`, `vm201/`, dan `vm202
 dengan struktur direktori mengikuti lokasi asal. Semua dibaca melalui SSH;
 tidak ada perubahan konfigurasi nginx saat pengambilan salinan.
 
-Tidak ada program Python pemroses pekerjaan pada backend. Nginx melayani halaman
+Sekarang setiap backend juga menjalankan Python worker CPU terpisah:
+
+```text
+/opt/task-worker/worker.py
+/opt/task-worker/task_profiles.json
+/etc/init.d/task-worker
+/etc/conf.d/task-worker
+/var/log/task-worker/service.log
+/var/log/task-worker/error.log
+```
+
+Layanan OpenRC `task-worker` aktif pada runlevel default dan port 8080. vm101/vm201
+memakai satu proses CPU, vm102/vm202 dua proses. Sumber bersama berada di
+`backends/worker/`; profil ada di `workload/`. Nginx melayani halaman
 root yang kecil, dengan isi nama VM. File indeks masing-masing mengembalikan
 `vm101`, `vm102`, `vm201`, atau `vm202`.
 
@@ -63,6 +76,7 @@ root yang kecil, dengan isi nama VM. File indeks masing-masing mengembalikan
 
 | Lokasi vm210 | Sumber di repo | Isi |
 |---|---|---|
+| `/opt/sufferage-lb/task_profiles.json` | `workload/task_profiles.json` | Estimasi awal dan jenis task |
 | `/opt/sufferage-lb/lb.py` | `vm210/lb.py` | HTTP proxy, antrean, scheduler, health check, CSV |
 | `/etc/init.d/sufferage-lb` | `vm210/openrc/sufferage-lb` | Layanan OpenRC autostart |
 | `/usr/local/sbin/run-sufferage-lb` | `vm210/openrc/run-sufferage-lb` | Membuka proses Sufferage dengan CSV baru |
@@ -74,11 +88,11 @@ dan Proxmox tetap langkah yang terpisah.
 
 ## Alur request
 
-1. Locust di Windows meminta `http://192.168.56.10/`.
+1. Locust di Windows memilih `/task/light`, `/task/medium`, atau `/task/heavy` pada `http://192.168.56.10`.
 2. LB memasukkan request ke antrean dan membuat mini-batch.
 3. Sufferage memilih backend sehat berdasarkan prediksi completion time.
-4. LB meneruskan HTTP ke nginx backend.
-5. Respons nginx dikirim kembali ke Windows melalui LB.
+4. LB meneruskan `/task/*` ke worker CPU backend port 8080; `/` tetap ke nginx port 80.
+5. Worker menghitung task, lalu JSON hasil dikirim kembali ke Windows melalui LB.
 6. LB menambahkan `X-LB-Backend` dan `X-LB-Algorithm`.
 7. Locust dan LB menyimpan request ID yang sama pada log masing-masing.
 

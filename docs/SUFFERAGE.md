@@ -27,13 +27,37 @@ dihitung ulang: A = 20 ms, B = 50 + 10 = 60 ms, sehingga request kecil ke A.
 
 ## Estimasi dan kondisi nyata
 
-Estimasi awal adalah 20 ms pada kapasitas satu, dipelajari per path dengan EWMA:
+Task CPU dibedakan melalui path: `/task/light`, `/task/medium`, `/task/heavy`.
+Profil bersama ada di [workload/task_profiles.json](../workload/task_profiles.json):
 
-`baru = 0.8 × lama + 0.2 × (durasi_upstream × bobot_backend)`
+| Jenis | Unit CPU | Iterasi PBKDF2 total | Estimasi awal kapasitas 1 | Campuran Locust |
+|---|---:|---:|---:|---:|
+| light | 2 | 2.000 | 50 ms | 50% |
+| medium | 8 | 8.000 | 200 ms | 30% |
+| heavy | 24 | 24.000 | 600 ms | 20% |
 
-Durasi upstream mencakup transaksi HTTP dan waktu tunggu. Ini bukan durasi CPU
-murni. `ready_time` adalah prediksi/reservasi virtual; LB tidak membaca antrean
-CPU backend. Bobot 1:2:1:2 adalah parameter model berdasarkan vCPU.
+Estimasi awal adalah parameter, bukan waktu respons yang dijamin. Setelah respons
+CPU sukses, LB mempelajari estimasi masing-masing path melalui EWMA:
+
+`baru = 0.8 × lama + 0.2 × jumlah_waktu_CPU_proses_worker`
+
+Worker melaporkan `X-Worker-CPU-Ms`, jumlah CPU time proses yang mengerjakan unit
+PBKDF2. Ini mengecualikan waktu menunggu antrean worker; bukan metrik utilisasi CPU.
+Untuk halaman statis `/`, estimasi awal tetap 20 ms dan observasi memakai
+`durasi_upstream × bobot_backend`. Cadangan ini juga dipakai bila header CPU tidak ada.
+
+Worker memecah satu task menjadi 1 atau 2 bagian sesuai kapasitas backend. Total
+kerja dan checksum tetap sama untuk jenis task yang sama di semua VM. Tidak ada
+`sleep` untuk memperlambat request. Kapasitas 1:2:1:2 tetap model berdasarkan vCPU;
+emulasi, overhead proses/jaringan, dan kontensi laptop membuat percepatan aktual
+tidak harus tepat dua kali. `ready_time` adalah reservasi virtual, bukan antrean CPU aktual.
+
+Header dan CSV menyertakan `estimated_work_ms`, `sufferage_ms`, `best_ct_ms`,
+`second_ct_ms`, `batch_id`, dan `assignment_order`. CT relatif terhadap waktu
+penjadwalan batch. Nilai dihitung ulang setiap alokasi. Dua backend terbaik dapat
+memiliki CT yang sama sehingga Sufferage nol; ini sah, termasuk pada task berat.
+Task berat tidak selalu dipilih lebih dulu atau selalu masuk backend bobot 2:
+keputusan mengikuti selisih CT dan reservasi yang ada.
 
 ## Fungsi-fungsi yang perlu ditunjukkan
 
@@ -54,11 +78,11 @@ menjalankan argumen `sufferage`; demo tidak perlu mengganti algoritma.
 
 ## Batasan yang perlu dijelaskan
 
-- Request saat ini sama-sama `GET /` halaman kecil; variasi biaya pekerjaan minim.
+- Task CPU saat ini memiliki rasio kerja 1:4:12; seluruh task memakai jenis komputasi yang sama. Belum ada workload I/O atau replay trafik produksi.
 - Waktu batching masuk ke latency klien. Batching tidak menjamin respons lebih cepat.
 - Bobot kapasitas belum dikalibrasi melalui benchmark CPU nyata.
 - Jumlah request per VM dan jumlah request/bobot punya interpretasi berbeda.
-- CSV belum menyimpan matriks CT atau nilai Sufferage tiap kandidat.
+- CSV menyimpan CT terbaik/kedua dan Sufferage saat terpilih, tetapi belum seluruh matriks kandidat setiap langkah.
 - Satu VM LB belum memiliki redundansi; health check menangani kegagalan backend.
-- Dalam benchmark sebelumnya, Round Robin memberi mean latency terendah;
+- Pada benchmark historis halaman nginx seragam, Round Robin memberi mean latency terendah;
   Sufferage lebih mendekati pembagian bobot pada stabil/spike. Lihat contoh ringkasan.

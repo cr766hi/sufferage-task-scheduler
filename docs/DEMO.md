@@ -4,7 +4,7 @@
 
 Nyalakan pve1/pve2 di VirtualBox. Tunggu Proxmox siap, lalu pastikan VM
 101, 102, 201, 202, dan 210 berstatus running. Tunggu guest selesai boot.
-Layanan `sufferage-lb` otomatis mulai saat vm210 boot.
+Layanan `sufferage-lb` otomatis mulai saat vm210 boot. Layanan `task-worker` otomatis mulai di setiap backend.
 
 ## 2. Cek LB dari PowerShell
 
@@ -12,7 +12,7 @@ Layanan `sufferage-lb` otomatis mulai saat vm210 boot.
 curl.exe --noproxy '*' http://192.168.56.10/__lb/health
 ```
 
-Hasil harus menunjukkan `"algorithm": "sufferage"` dan keempat backend
+Hasil harus menunjukkan `"algorithm": "sufferage"`, `"workload": "mixed-cpu-v1"`, dan keempat backend
 `"healthy": true`. `queued` menunjukkan antrean masuk; `active` menunjukkan
 request upstream aktif yang dihitung LB. Nilai ini bukan persentase CPU.
 
@@ -52,6 +52,18 @@ menghasilkan body tersebut. Untuk beberapa request:
 1..8 | ForEach-Object { curl.exe --noproxy '*' -sS -i http://192.168.56.10/ }
 ```
 
+### Tunjukkan task CPU yang berbeda
+
+```powershell
+curl.exe --noproxy '*' -i http://192.168.56.10/task/light
+curl.exe --noproxy '*' -i http://192.168.56.10/task/medium
+curl.exe --noproxy '*' -i http://192.168.56.10/task/heavy
+```
+
+JSON berisi `task_type`, `units`, `cpu_ms`, `worker_elapsed_ms`, `checksum`, dan
+nama backend. Header LB memuat estimasi kerja, CT terbaik/kedua, Sufferage, batch,
+dan urutan alokasi. Nilai Sufferage nol sah jika dua pilihan terbaik sama baiknya.
+
 ## 4. Siapkan Python Windows sekali saja
 
 Clone repo private memakai akun yang punya akses, lalu buka PowerShell pada akar repo:
@@ -77,7 +89,9 @@ LB yang aktif; tidak memasang LB atau mengganti algoritma di vm210.
 
 Tunjukkan statistik request, failures, response time, dan request/s. Pada tab
 grafik, tunjukkan response time, throughput dan jumlah user terhadap waktu.
-Jumlah user mengikuti `ScenarioShape` dalam `locustfile.py`, bukan diisi bebas:
+Locust mengirim campuran task CPU light/medium/heavy dengan target proporsi
+50%/30%/20%. Rasio kerja 1:4:12. Jumlah user mengikuti `ScenarioShape` dalam
+`locustfile.py`, bukan diisi bebas:
 
 | Skenario | Pola 60 detik |
 |---|---|
@@ -99,13 +113,14 @@ Jika `.ps1` ditolak kebijakan PowerShell, gunakan Python langsung tanpa mengubah
 kebijakan keamanan Windows:
 
 ```powershell
+$env:WORKLOAD = 'mixed'
 $env:SCENARIO = 'stable'
 $env:DURATION = '60'
 $env:REQUEST_CSV = $null
 $env:SINGLE_CSV_DIR = Join-Path (Get-Location) 'results'
 $env:LB_ALGORITHM = 'sufferage'
 $env:RUN_SEED = '1001'
-.\.venv\Scripts\python.exe -m locust -f windows\locustfile.py --host http://192.168.56.10 --web-host 127.0.0.1 --web-port 8089 --stop-timeout 8
+.\.venv\Scripts\python.exe -m locust -f windows\locustfile.py --host http://192.168.56.10 --web-host 127.0.0.1 --web-port 8089 --stop-timeout 25
 ```
 
 ## 6. Lihat satu CSV lengkap per pengujian
@@ -144,6 +159,7 @@ CSV UTF-8 menyertakan satu header dan kolom `record_type`:
 | `config` | Skenario, algoritma, target, durasi rencana, pola user, seed, health awal |
 | `request` | Waktu UTC, detik sejak mulai, user aktif, request ID, backend, respons ms, ukuran, status, error |
 | `summary` | Durasi aktual, total/sukses/gagal, rata-rata, p95, request/detik, error %, hitungan per VM, std dev |
+| `task_summary` | Total, rata-rata, p95, error dan pembagian backend untuk light/medium/heavy |
 | `backend_summary` | Total, sukses/gagal, rata-rata, p95, throughput dan error % untuk masing-masing VM |
 
 Buka dengan Excel atau filter `record_type = summary` untuk melihat hasil utama.
@@ -160,7 +176,8 @@ dihentikan dengan Stop/Ctrl+C. Jika proses dimatikan paksa, ringkasan mungkin be
 ada. Pada skenario fault, waktu pemadaman manual tidak dideteksi oleh CSV ini.
 
 CSV Windows mengukur sisi klien; field internal LB seperti `queue_ms`,
-`upstream_ms`, dan estimasi kerja tetap tersedia di log vm210 di bawah ini.
+`upstream_ms`, estimasi kerja, CT dan Sufferage kini juga tersedia pada baris request
+CSV Windows (dari header respons). Log vm210 di bawah tetap menjadi catatan sisi LB.
 Runner benchmark historis pada `experiments/` tetap menggunakan format lamanya.
 
 ## 7. Lihat CSV Sufferage di vm210
@@ -217,8 +234,18 @@ Health check membuang backend gagal dari kandidat. Request yang terlanjur dikiri
 masih dapat gagal 502. `windows/locustfile.py` hanya menghasilkan trafik;
 benchmark otomatis menggunakan [runner](../experiments/run_experiments.py).
 
-CSV saat ini menunjukkan keputusan backend dan estimasi kerja. CSV belum
-mencatat seluruh matriks CT dan nilai Sufferage setiap kandidat. Untuk menjelaskan
+CSV saat ini menunjukkan keputusan backend, jenis task, estimasi kerja, CT
+terbaik/kedua, Sufferage dan urutan alokasi. Seluruh matriks CT tiap kandidat belum dicatat. Untuk menjelaskan
 langkah matematisnya, tampilkan `sufferage_plan()` dan contoh pada
 [cara kerja algoritma](SUFFERAGE.md). Tidak ada dashboard khusus scheduler yang
 diklaim terpasang; grafik yang ditampilkan adalah grafik pengukuran Locust.
+
+### Yang ditunjukkan saat demo task
+
+1. Jalankan skenario stable seperti biasa; di Locust muncul baris `task/light`, `task/medium`, `task/heavy`.
+2. Setelah selesai, buka `hasil_pengujian.html`: lihat perbandingan jenis task dan request per backend.
+3. Buka bagian bukti Sufferage: tunjukkan `CT kedua - CT terbaik` dan backend yang dipilih.
+4. Bandingkan hasil baru hanya dengan workload `mixed-cpu-v1`; tes lama nginx tetap diberi label terpisah.
+
+Jika Locust sudah terbuka sebelum perubahan kode, Ctrl+C lalu jalankan helper lagi
+agar proses memuat kode terbaru. Jangan sekadar menekan Start pada proses lama.

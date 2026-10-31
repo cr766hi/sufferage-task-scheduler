@@ -33,6 +33,7 @@ def main():
         print(command("hostname; command -v openrc-run; command -v supervise-daemon; python3 -c 'import aiohttp; print(aiohttp.__version__)'"))
         command('mkdir -p /root/sufferage-lb-install /opt/sufferage-lb /usr/local/sbin /var/log/sufferage-lb')
         for local, name in [(root / 'vm210/lb.py', 'lb.py'),
+                            (root / 'workload/task_profiles.json', 'task_profiles.json'),
                             (root / 'vm210/openrc/sufferage-lb', 'sufferage-lb'),
                             (root / 'vm210/openrc/run-sufferage-lb', 'run-sufferage-lb')]:
             stdin, stdout, stderr = client.exec_command('umask 077; cat > /root/sufferage-lb-install/' + name, timeout=60)
@@ -51,6 +52,7 @@ fi
 for item in /opt/sufferage-lb/lb.py /etc/init.d/sufferage-lb /usr/local/sbin/run-sufferage-lb; do
     if test -f "$item"; then cp -p "$item" "$item.before-install"; fi
 done
+cp /root/sufferage-lb-install/task_profiles.json /opt/sufferage-lb/task_profiles.json
 cp /root/sufferage-lb-install/lb.py /opt/sufferage-lb/lb.py
 chmod 0644 /opt/sufferage-lb/lb.py
 cp /root/sufferage-lb-install/sufferage-lb /etc/init.d/sufferage-lb

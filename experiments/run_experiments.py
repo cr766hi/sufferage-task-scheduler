@@ -255,7 +255,7 @@ def main():
                     # Readiness only uses the excluded health endpoint. Reset is a fresh process.
                     client_csv = directory / (name + '-client.csv')
                     env = os.environ.copy()
-                    env.update(SCENARIO=scenario, DURATION=str(args.duration),
+                    env.update(WORKLOAD='uniform', SCENARIO=scenario, DURATION=str(args.duration),
                                REQUEST_CSV=str(client_csv), RUN_SEED=str(1000 + repeat))
                     record = {'scenario': scenario, 'repeat': repeat, 'algorithm': mode,
                               'name': name, 'state': 'running', 'fault': None}

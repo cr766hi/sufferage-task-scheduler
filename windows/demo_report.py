@@ -2,6 +2,7 @@
 import csv
 from datetime import datetime, timezone
 import math
+import os
 from pathlib import Path
 import statistics
 import time
@@ -18,6 +19,10 @@ FIELDS = [
     'error_rate_percent', 'vm101_requests', 'vm102_requests',
     'vm201_requests', 'vm202_requests', 'unassigned_requests',
     'load_imbalance_stddev', 'initial_health_json',
+    'workload', 'task_type', 'task_units', 'worker_cpu_ms', 'worker_elapsed_ms',
+    'estimated_work_ms', 'queue_ms', 'upstream_ms', 'sufferage_ms',
+    'best_ct_ms', 'second_ct_ms', 'batch_id', 'assignment_order',
+    'light_requests', 'medium_requests', 'heavy_requests',
 ]
 
 
@@ -45,7 +50,8 @@ class SingleCsvReport:
                          algorithm=algorithm, target_url=target,
                          nominal_duration_seconds=duration, users_base=10,
                          users_spike=40 if scenario == 'spike' else 10,
-                         pacing_seconds=1, seed=seed)
+                         pacing_seconds=1, seed=seed,
+                         workload='mixed-cpu-v1' if os.environ.get('WORKLOAD', 'mixed') == 'mixed' else 'uniform-nginx-v1')
         self.started = time.perf_counter()
         self.rows = []
         self.write('config', initial_health_json=health)
@@ -59,16 +65,26 @@ class SingleCsvReport:
         self.handle.flush()
 
     def request(self, method, endpoint, request_id, backend, algorithm, response_time,
-                response_bytes, status, error, active_users):
+                response_bytes, status, error, active_users, task_type='uniform', scheduling=None):
         if self.handle is None:
             return
         success = not error and 200 <= status < 400
-        self.rows.append((backend, response_time, success))
+        self.rows.append((backend, response_time, success, task_type))
+        headers = {key.lower(): value for key, value in (scheduling or {}).items()}
+        trace = {column: headers.get(header.lower(), '') for column, header in {
+            'task_units': 'X-Task-Units', 'worker_cpu_ms': 'X-Worker-CPU-Ms',
+            'worker_elapsed_ms': 'X-Worker-Elapsed-Ms',
+            'estimated_work_ms': 'X-LB-Estimated-Work-Ms', 'queue_ms': 'X-LB-Queue-Ms',
+            'upstream_ms': 'X-LB-Upstream-Ms', 'sufferage_ms': 'X-LB-Sufferage-Ms',
+            'best_ct_ms': 'X-LB-Best-CT-Ms', 'second_ct_ms': 'X-LB-Second-CT-Ms',
+            'batch_id': 'X-LB-Batch-ID', 'assignment_order': 'X-LB-Assignment-Order',
+        }.items()}
         self.write('request', method=method, endpoint=endpoint, request_id=request_id,
                    backend=backend, algorithm=algorithm or self.base['algorithm'],
                    response_time_ms=response_time, response_bytes=response_bytes,
                    status=status, success=success, error=error, active_users=active_users,
-                   elapsed_seconds=round(time.perf_counter() - self.started, 6))
+                   elapsed_seconds=round(time.perf_counter() - self.started, 6),
+                   task_type=task_type, **trace)
 
     @staticmethod
     def metrics(rows, duration):
@@ -91,11 +107,20 @@ class SingleCsvReport:
                    **self.metrics(self.rows, duration),
                    **{backend + '_requests': count for backend, count in counts.items()},
                    unassigned_requests=sum(row[0] not in BACKENDS for row in self.rows),
-                   load_imbalance_stddev=statistics.pstdev(counts.values()))
+                   load_imbalance_stddev=statistics.pstdev(counts.values()),
+                   **{kind + '_requests': sum(row[3] == kind for row in self.rows)
+                      for kind in ('light', 'medium', 'heavy')})
         for backend in BACKENDS:
             rows = [row for row in self.rows if row[0] == backend]
             self.write('backend_summary', backend=backend, actual_duration_seconds=duration,
                        **self.metrics(rows, duration))
+        for kind in ('light', 'medium', 'heavy'):
+            rows = [row for row in self.rows if row[3] == kind]
+            if rows:
+                self.write('task_summary', task_type=kind, actual_duration_seconds=duration,
+                           **self.metrics(rows, duration),
+                           **{backend + '_requests': sum(row[0] == backend for row in rows)
+                              for backend in BACKENDS})
         self.handle.close()
         self.handle = None
         print(f'Hasil lengkap tersimpan: {self.path}', flush=True)

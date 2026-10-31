@@ -1,0 +1,19 @@
+#!/sbin/openrc-run
+description="Bounded CPU task worker for Sufferage demo"
+supervisor="supervise-daemon"
+command="/usr/bin/python3"
+command_args="-u /opt/task-worker/worker.py --port 8080 --backend ${backend_name} --capacity ${worker_capacity}"
+output_log="/var/log/task-worker/service.log"
+error_log="/var/log/task-worker/error.log"
+respawn_delay=3
+respawn_max=5
+respawn_period=60
+
+depend() {
+    need net
+    after firewall
+}
+
+start_pre() {
+    checkpath --directory --mode 0750 /var/log/task-worker
+}

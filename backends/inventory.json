@@ -8,7 +8,15 @@
       "/etc/nginx/http.d/default.conf",
       "/var/www/localhost/htdocs/index.html"
     ],
-    "index": "/var/www/localhost/htdocs/index.html"
+    "index": "/var/www/localhost/htdocs/index.html",
+    "worker_port": 8080,
+    "worker_processes": 1,
+    "worker_files": [
+      "/opt/task-worker/worker.py",
+      "/opt/task-worker/task_profiles.json",
+      "/etc/init.d/task-worker",
+      "/etc/conf.d/task-worker"
+    ]
   },
   {
     "vm": "vm102",
@@ -19,7 +27,15 @@
       "/etc/nginx/http.d/default.conf",
       "/var/www/localhost/htdocs/index.html"
     ],
-    "index": "/var/www/localhost/htdocs/index.html"
+    "index": "/var/www/localhost/htdocs/index.html",
+    "worker_port": 8080,
+    "worker_processes": 2,
+    "worker_files": [
+      "/opt/task-worker/worker.py",
+      "/opt/task-worker/task_profiles.json",
+      "/etc/init.d/task-worker",
+      "/etc/conf.d/task-worker"
+    ]
   },
   {
     "vm": "vm201",
@@ -30,7 +46,15 @@
       "/etc/nginx/http.d/default.conf",
       "/var/www/localhost/htdocs/index.html"
     ],
-    "index": "/var/www/localhost/htdocs/index.html"
+    "index": "/var/www/localhost/htdocs/index.html",
+    "worker_port": 8080,
+    "worker_processes": 1,
+    "worker_files": [
+      "/opt/task-worker/worker.py",
+      "/opt/task-worker/task_profiles.json",
+      "/etc/init.d/task-worker",
+      "/etc/conf.d/task-worker"
+    ]
   },
   {
     "vm": "vm202",
@@ -41,6 +65,14 @@
       "/etc/nginx/http.d/default.conf",
       "/var/www/localhost/htdocs/index.html"
     ],
-    "index": "/var/www/localhost/htdocs/index.html"
+    "index": "/var/www/localhost/htdocs/index.html",
+    "worker_port": 8080,
+    "worker_processes": 2,
+    "worker_files": [
+      "/opt/task-worker/worker.py",
+      "/opt/task-worker/task_profiles.json",
+      "/etc/init.d/task-worker",
+      "/etc/conf.d/task-worker"
+    ]
   }
 ]

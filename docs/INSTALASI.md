@@ -12,6 +12,25 @@ python -m venv .venv
 Dependensi Windows: Locust 2.47.0 dan Paramiko 5.1.0. Script tidak memuat password;
 installer/runner meminta kredensial melalui prompt tersembunyi.
 
+## Worker CPU di backend
+
+Worker telah dipasang pada keempat backend lab dan aktif di runlevel default.
+Untuk memasang pada clone lab yang sama dari Windows:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\install_task_workers.py
+```
+
+Installer meminta password melalui prompt tersembunyi, memasang Python lewat
+`apk add --no-cache python3` jika belum ada, lalu memasang service `task-worker`.
+Worker port 8080 berjalan terpisah dari nginx port 80. Tidak ada konfigurasi nginx
+yang diubah. Periksa melalui `http://<IP-backend>:8080/health` atau pada backend:
+
+```sh
+rc-service task-worker status
+rc-update show default
+```
+
 ## vm210 yang sudah dikonfigurasi
 
 Layanan Sufferage sudah dipasang di lab ini. Untuk demo biasa, cukup cek health;
@@ -43,6 +62,7 @@ lab; jangan mencampur repository versi lain pada instalasi Alpine yang berbeda.
 
 ```text
 /opt/sufferage-lb/lb.py
+/opt/sufferage-lb/task_profiles.json
 /etc/init.d/sufferage-lb
 /usr/local/sbin/run-sufferage-lb
 /var/log/sufferage-lb/service.log
@@ -68,8 +88,7 @@ merupakan pengaturan terpisah; repo ini tidak mengubahnya.
 
 ## Backend dan host
 
-Backend sudah melayani nginx dan tidak perlu dimodifikasi untuk menjalankan
-Locust. Salinan konfigurasi aktual ada dalam `backends/`. Jangan menyalin seluruh
+Backend melayani nginx untuk halaman identitas dan worker CPU untuk variasi task Locust. Salinan konfigurasi aktual ada dalam `backends/`. Jangan menyalin seluruh
 folder ke VM lain tanpa menyesuaikan identitas dan memeriksa konfigurasinya.
 Untuk memeriksa konfigurasi tanpa reload:
 

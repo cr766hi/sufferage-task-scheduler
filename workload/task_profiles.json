@@ -1,0 +1,9 @@
+{
+  "workload_id": "mixed-cpu-v1",
+  "iterations_per_unit": 1000,
+  "tasks": {
+    "light": {"units": 2, "weight": 50, "initial_work_ms": 50},
+    "medium": {"units": 8, "weight": 30, "initial_work_ms": 200},
+    "heavy": {"units": 24, "weight": 20, "initial_work_ms": 600}
+  }
+}

@@ -1,7 +1,7 @@
 # Sufferage HTTP Load Balancer
 
 Proyek tugas kuliah: load balancing HTTP menggunakan heuristik **Sufferage** pada
-empat backend nginx. LB berjalan di **vm210** dan trafik pengujian dibuat oleh
+empat backend nginx + worker CPU ringan/sedang/berat. LB berjalan di **vm210** dan trafik pengujian dibuat oleh
 **Locust di Windows**. Operasional demo menggunakan Sufferage dengan autostart OpenRC.
 
 ## Mulai membaca dari sini
@@ -17,13 +17,13 @@ empat backend nginx. LB berjalan di **vm210** dan trafik pengujian dibuat oleh
 flowchart LR
   W["Windows .56.1\nLocust / PowerShell / browser"]
   subgraph P1["pve1 — 192.168.56.11:8006"]
-    A["vm101 — .56.21\nnginx, bobot 1"]
-    B["vm102 — .56.22\nnginx, bobot 2"]
+    A["vm101 — .56.21\nnginx + worker CPU, bobot 1"]
+    B["vm102 — .56.22\nnginx + worker CPU, bobot 2"]
   end
   subgraph P2["pve2 — 192.168.56.12:8006"]
     L["vm210 — .56.10:80\nPython + aiohttp + Sufferage"]
-    C["vm201 — .56.31\nnginx, bobot 1"]
-    D["vm202 — .56.32\nnginx, bobot 2"]
+    C["vm201 — .56.31\nnginx + worker CPU, bobot 1"]
+    D["vm202 — .56.32\nnginx + worker CPU, bobot 2"]
   end
   W -->|HTTP| L
   L --> A
@@ -72,13 +72,15 @@ di [panduan demo](docs/DEMO.md); kebijakan keamanan Windows tidak perlu diubah.
 | `vm210/` | vm210 | LB Python dan dependensi aiohttp |
 | `vm210/openrc/` | vm210 | Layanan autostart Sufferage dan pembuka proses |
 | `backends/vm101/` sampai `vm202/` | VM backend terkait | Salinan konfigurasi nginx dan halaman aktual |
+| `workload/` | Windows, vm210, backend | Profil task CPU dan proporsi campuran |
+| `backends/worker/` | Semua backend | Worker CPU Python di port 8080 dan layanan OpenRC |
 | `windows/` | Windows | Locust, pola beban, dan pembuka Web UI |
 | `scripts/` | Windows | Installer layanan ke vm210 via SSH |
 | `experiments/` | Windows | Runner, rangkuman, dan audit benchmark pembanding sebelumnya |
 | `examples/` | Referensi | Contoh CSV kecil dan ringkasan hasil benchmark |
 | `docs/` | Dokumentasi | Topologi host, cara kerja, instalasi, dan langkah demo |
 
-Tidak ada kode algoritma yang dipasang di host pve1/pve2 atau backend nginx.
+Algoritma Sufferage hanya ada di vm210. Backend menjalankan worker CPU, sedangkan host pve1/pve2 tetap menjalankan Proxmox.
 Kode inti ada di [vm210/lb.py](vm210/lb.py). Nginx menggunakan konfigurasi yang
 disalin ke folder backend; lokasi asalnya tercatat dalam [inventory](backends/inventory.json).
 
@@ -109,9 +111,25 @@ Benchmark sebelumnya: 3 algoritma × 3 skenario × 3 pengulangan = 27 run,
 [examples/benchmark-summary.csv](examples/benchmark-summary.csv).
 Kode pembanding tetap disimpan untuk keterlacakan; layanan autostart memilih Sufferage.
 
-Workload saat ini mengambil halaman `/` yang kecil dan hampir seragam. Bobot
-1:2:1:2 merupakan input model, belum kalibrasi kapasitas nyata. CPU backend belum
-dibaca oleh algoritma. Hasil ini menunjukkan perilaku pada lab emulasi tersebut.
+## Variasi task untuk demo Sufferage
+
+Locust sekarang memilih `light` 50%, `medium` 30%, dan `heavy` 20% (proporsi
+acak, bukan jumlah pasti setiap run). Task benar-benar menghitung PBKDF2-SHA256
+dengan rasio kerja **1:4:12**. Profil dan iterasinya ada di `workload/task_profiles.json`.
+Nginx port 80 tetap melayani identitas VM; task CPU dilayani worker port 8080.
+LB port 80 meneruskan path `/task/*` ke worker backend pilihan Sufferage.
+
+```powershell
+curl.exe --noproxy '*' -i http://192.168.56.10/task/heavy
+```
+
+LB mempunyai estimasi awal berbeda per task dan memperbaruinya dari CPU time
+worker. CSV dan tabel HTML memuat ringkasan per jenis task serta contoh CT dan
+nilai Sufferage. Baca [cara kerja](docs/SUFFERAGE.md).
+
+Hasil benchmark 27 run di atas memakai **workload nginx seragam versi lama**.
+Hasil itu tidak menunjukkan performa campuran task CPU yang baru. Tabel menandai
+`uniform-nginx-v1` dan `mixed-cpu-v1` supaya keduanya dibaca terpisah.
 
 ## Catatan kesiapan demo
 
