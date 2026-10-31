@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import statistics
 import webbrowser
+from scheduler_charts import charts_dashboard, CHART_CSS
 
 
 def save_result(root, batch):
@@ -157,6 +158,8 @@ def generate_report(root):
             if row['record_type'] == 'etc_calibration':
                 etc.append([row['task_type'],row['worker'],fmt(row['etc_ms'])])
     sections = [
+        ('Grafik hasil pengujian', 'Mulai dari grafik untuk melihat pola; angka dan jejak keputusan lengkap tetap ada pada tabel di bawah. Arahkan pointer ke batang/titik untuk melihat nilainya. Grafik dibuat dari CSV tersimpan, bukan data live.',
+         charts_dashboard(runs)),
         ('Timeline eksekusi · batch terakhir', 'Setiap balok adalah satu task yang benar-benar dieksekusi. Ruang kosong di awal mencakup planning/persiapan; ruang kosong setelah task terakhir adalah jeda akhir worker. Arahkan pointer ke balok untuk melihat Task ID.',
          timeline(latest[3], float(latest[2].get('makespan_seconds') or 0)) if latest else '<p>Belum ada batch.</p>'),
         ('Perbandingan hasil batch', 'Seluruh task datang bersamaan. Metrik utama adalah waktu penyelesaian batch dan waktu tunggu task.',
@@ -187,7 +190,7 @@ def generate_report(root):
         ('Rata-rata turnaround',fmt(summary.get('avg_turnaround_ms'))+' ms'),
         ('Task selesai',str(summary.get('completed_tasks','—'))+' / '+str(summary.get('total_tasks','—')))])+'</div>'
     output = root / 'hasil_pengujian.html'
-    output.write_text(html.replace('CARDS',cards).replace('CONTENT',content), encoding='utf-8')
+    output.write_text(html.replace('</style>', CHART_CSS + '</style>').replace('CARDS',cards).replace('CONTENT',content), encoding='utf-8')
     return output
 
 

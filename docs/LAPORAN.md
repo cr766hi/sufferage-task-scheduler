@@ -79,3 +79,18 @@ Run normal ketiga dilakukan setelah pve1 pulih dan seluruh jenis task di-warmup 
   reset resource, tujuh sampel RPC, serta ekuivalensi planner termasuk tie.
 
 Cara demo dan SSH: [DEMO.md](DEMO.md). Rumus algoritma: [SUFFERAGE.md](SUFFERAGE.md).
+
+## Penyajian visual hasil
+
+Laporan HTML lokal kini menampilkan 12 grafik per batch: komposisi task, status,
+jenis task per worker, unit kerja per worker, waiting/turnaround per jenis, waktu
+selesai worker, ETC versus aktual, prediksi versus durasi batch, CPU, RAM, kurva
+CPU sepanjang eksekusi, dan nilai Sufferage sepanjang urutan alokasi. Grafik
+makespan dan throughput antar-pengujian muncul jika terdapat lebih dari satu CSV.
+
+Angka grafik berasal dari CSV yang sama dengan tabel. Tidak ada pengujian baru
+atau perubahan hasil lama untuk menghasilkan grafik ini. Tabel jejak CT dan
+waktu eksekusi tetap tersedia untuk memeriksa keputusan algoritma. Kurva Sufferage
+bisa naik/turun karena ready time diperbarui setiap keputusan. Grafik resource
+menampilkan pengukuran guest dan tidak menganggap sampel hilang sebagai nol.
+Cara membuat ulang HTML dan urutan penjelasan demo ada pada [DEMO.md](DEMO.md).

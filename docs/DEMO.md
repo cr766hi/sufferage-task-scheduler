@@ -172,3 +172,33 @@ tail -f /var/log/sufferage-scheduler/service.log
 ```
 
 Tekan `Ctrl+C` untuk berhenti menampilkan log; service scheduler tetap berjalan.
+
+
+## Grafik hasil untuk presentasi
+
+`hasil_pengujian.html` sekarang memuat grafik offline dari CSV tersimpan:
+
+- Komposisi task dan status eksekusi.
+- Batang bertumpuk jenis task pada setiap worker, serta total unit kerja.
+- Waiting/turnaround per jenis dan waktu terakhir selesai tiap worker.
+- ETC versus durasi RPC aktual dan prediksi antrean versus fase eksekusi aktual.
+- CPU/RAM rata-rata dan puncak tiap VM, serta kurva CPU sepanjang eksekusi.
+- Nilai Sufferage sepanjang urutan keputusan alokasi.
+- Jika terdapat beberapa CSV, makespan dan throughput antar-pengujian.
+
+Gunakan pilihan pengujian di atas grafik; default adalah nomor pengujian terakhir.
+Arahkan pointer ke batang/titik untuk melihat nilainya. Tabel dan jejak Sufferage
+tetap tersedia. Grafik memakai SVG lokal tanpa koneksi internet/library tambahan.
+
+Untuk membuat ulang HTML dari CSV yang sudah ada tanpa menjalankan batch baru:
+
+```powershell
+cd E:\testsokarealworld
+.\.venv\Scripts\python.exe windows\scheduler_report.py --open
+```
+
+Saat demo, tunjukkan jenis task per worker, unit kerja, lalu timeline dan jejak
+Sufferage untuk menghubungkan pembagian beban dengan keputusan algoritma. Terangkan
+bahwa CPU persen dinormalisasi terhadap seluruh vCPU, data hilang bukan nol, dan
+perbandingan uji harus memakai dataset/ETC serta kondisi VM yang sama. Grafik ini
+tidak membuktikan keunggulan terhadap algoritma lain. Refresh setelah tes baru.
