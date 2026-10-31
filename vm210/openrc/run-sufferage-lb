@@ -1,9 +1,0 @@
-#!/bin/sh
-set -eu
-umask 027
-
-log_root=/var/log/sufferage-lb
-mkdir -p "$log_root"
-run_dir=$(mktemp -d "$log_root/run-$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX")
-exec /usr/bin/python3 -u /opt/sufferage-lb/lb.py sufferage \
-    --port 80 --csv "$run_dir/requests.csv"

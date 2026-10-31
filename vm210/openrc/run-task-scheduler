@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+exec /usr/bin/python3 -u /opt/sufferage-scheduler/scheduler.py \
+    --port 80 --log-root /var/log/sufferage-scheduler

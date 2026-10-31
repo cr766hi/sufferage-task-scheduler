@@ -1,88 +1,61 @@
-# Cara kerja Sufferage dalam kode
+# Algoritma dan metrik task scheduling
 
-Kode inti: [vm210/lb.py](../vm210/lb.py), fungsi `sufferage_plan()`.
+Kode utama: [vm210/sufferage.py](../vm210/sufferage.py), fungsi `sufferage_plan()`.
 
-## Langkah penjadwalan
+## Model eksperimen
 
-1. Maksimal 20 request atau jendela pengumpulan 75 ms.
-2. Pilih hanya backend yang sehat.
-3. Untuk tiap request, hitung pada setiap backend:
+Task independen, semua datang bersamaan (arrival = 0), tidak dipreempt atau
+dimigrasikan. Dataset tetap berisi Task ID dan jenis/ukuran pekerjaan. Matriks
+ETC mengestimasi durasi eksekusi task pada setiap worker. ETC memakai median dua
+`worker_elapsed_ms` setelah warmup; empat worker dikalibrasi bersamaan sebelum
+batch. Kontensi nested emulation tetap memengaruhi estimasi.
 
-   `CT = max(now, ready_time_backend) + estimated_work / capacity`
+## Langkah Sufferage
 
-4. `sufferage = CT_terbaik_kedua - CT_terbaik`.
-5. Request dengan Sufferage terbesar dipilih, ditugaskan ke backend dengan CT
-   terbaik, dan ready time virtual backend diperbarui.
-6. Hitung ulang request yang tersisa sampai batch habis, kemudian forward HTTP.
+1. Ready time awal setiap VM = 0.
+2. Untuk setiap task belum dialokasikan, hitung `CT(task,VM) = ready(VM) + ETC(task,VM)`.
+3. Sufferage task = CT terbaik kedua − CT terbaik.
+4. Pilih task dengan Sufferage terbesar, lalu alokasikan ke VM dengan CT terkecil.
+5. Perbarui ready time VM menjadi CT task yang dialokasikan.
+6. Hitung ulang seluruh kandidat yang tersisa sampai semua task terjadwal.
 
-Contoh ilustrasi dua backend, bukan data hasil benchmark:
+Tie Sufferage mengikuti urutan dataset; tie CT mengikuti urutan worker. Selisih
+nol valid ketika dua pilihan sama baiknya. Setelah rencana selesai, tiap worker
+mengeksekusi antrean dalam urutan alokasi, dan semua antrean berjalan paralel.
 
-| Request | CT A, bobot 1 | CT B, bobot 2 | Sufferage |
+Contoh dua task dan dua worker (angka ilustrasi, bukan hasil ukur):
+
+| Task | ETC A ms | ETC B ms | Sufferage awal ms |
 |---|---:|---:|---:|
-| Kerja 20 ms | 20 | 10 | 10 |
-| Kerja 100 ms | 100 | 50 | 50 |
+| light | 20 | 10 | 10 |
+| heavy | 100 | 50 | 50 |
 
-Request besar lebih dulu ke B. Ready time B menjadi 50 ms. CT request kecil
-dihitung ulang: A = 20 ms, B = 50 + 10 = 60 ms, sehingga request kecil ke A.
+Heavy masuk B terlebih dahulu. Ready B = 50. CT light menjadi A=20 dan B=60,
+sehingga light masuk A. Perhitungan ini diuji otomatis.
 
-## Estimasi dan kondisi nyata
+## Definisi hasil
 
-Task CPU dibedakan melalui path: `/task/light`, `/task/medium`, `/task/heavy`.
-Profil bersama ada di [workload/task_profiles.json](../workload/task_profiles.json):
+- Arrival semua task = 0 pada saat scheduler menerima batch setelah kalibrasi.
+- Waiting = start − arrival; start adalah saat scheduler mulai RPC task tersebut.
+- Execution = finish − start, termasuk transport scheduler–worker.
+- Turnaround = finish − arrival; sama dengan waiting + execution.
+- Makespan = waktu batch dari admission sampai antrean selesai/terminal; mencakup
+  planning dan persiapan snapshot resource awal, tidak mencakup kalibrasi.
+- Throughput = task sukses / makespan dalam detik.
+- Rata-rata waiting/turnaround dan p95 hanya task sukses; kegagalan dan skipped
+  dilaporkan terpisah. Untuk batch gagal, makespan adalah durasi terminasi parsial,
+  bukan durasi menyelesaikan semua task.
+- Predicted makespan = finish virtual terbesar; tidak sama dengan makespan aktual.
 
-| Jenis | Unit CPU | Iterasi PBKDF2 total | Estimasi awal kapasitas 1 | Campuran Locust |
-|---|---:|---:|---:|---:|
-| light | 2 | 2.000 | 50 ms | 50% |
-| medium | 8 | 8.000 | 200 ms | 30% |
-| heavy | 24 | 24.000 | 600 ms | 20% |
+Seluruh waktu start/finish/arrival diukur pada monotonic clock vm210 yang sama,
+sehingga tidak membutuhkan sinkronisasi jam lintas VM. CPU time dan elapsed worker
+adalah ukuran tersendiri di dalam VM worker. Virtual clock/emulasi dan kontensi
+laptop membatasi interpretasi hasil sebagai performa mesin produksi.
 
-Estimasi awal adalah parameter, bukan waktu respons yang dijamin. Setelah respons
-CPU sukses, LB mempelajari estimasi masing-masing path melalui EWMA:
+Dataset 40 task: light 20 × 2 unit, medium 12 × 8 unit, heavy 8 × 24 unit,
+setiap unit 1.000 iterasi PBKDF2-SHA256. Rasio kerja 1:4:12, tanpa sleep buatan.
+Sufferage adalah heuristik; pengujian fungsional tidak membuktikan optimalitas.
 
-`baru = 0.8 × lama + 0.2 × jumlah_waktu_CPU_proses_worker`
-
-Worker melaporkan `X-Worker-CPU-Ms`, jumlah CPU time proses yang mengerjakan unit
-PBKDF2. Ini mengecualikan waktu menunggu antrean worker; bukan metrik utilisasi CPU.
-Untuk halaman statis `/`, estimasi awal tetap 20 ms dan observasi memakai
-`durasi_upstream × bobot_backend`. Cadangan ini juga dipakai bila header CPU tidak ada.
-
-Worker memecah satu task menjadi 1 atau 2 bagian sesuai kapasitas backend. Total
-kerja dan checksum tetap sama untuk jenis task yang sama di semua VM. Tidak ada
-`sleep` untuk memperlambat request. Kapasitas 1:2:1:2 tetap model berdasarkan vCPU;
-emulasi, overhead proses/jaringan, dan kontensi laptop membuat percepatan aktual
-tidak harus tepat dua kali. `ready_time` adalah reservasi virtual, bukan antrean CPU aktual.
-
-Header dan CSV menyertakan `estimated_work_ms`, `sufferage_ms`, `best_ct_ms`,
-`second_ct_ms`, `batch_id`, dan `assignment_order`. CT relatif terhadap waktu
-penjadwalan batch. Nilai dihitung ulang setiap alokasi. Dua backend terbaik dapat
-memiliki CT yang sama sehingga Sufferage nol; ini sah, termasuk pada task berat.
-Task berat tidak selalu dipilih lebih dulu atau selalu masuk backend bobot 2:
-keputusan mengikuti selisih CT dan reservasi yang ada.
-
-## Fungsi-fungsi yang perlu ditunjukkan
-
-| Fungsi/kelas | Peran |
-|---|---|
-| `Backend` | URL, bobot, kesehatan, request aktif, ready time |
-| `Job` | Request yang menunggu jadwal |
-| `handle()` | Menerima HTTP dan memasukkan job ke antrean |
-| `scheduler()` | Membentuk batch dan memilih algoritma |
-| `sufferage_plan()` | Memilih urutan request/backend berdasarkan selisih CT |
-| `dispatch()` / `forward()` | Memproses HTTP ke backend dan mengembalikan respons |
-| `probe()` / `health_loop()` | Health check backend |
-| `record()` | CSV request |
-
-Source mempertahankan mode pembanding yang dipakai pada benchmark agar kode
-penelitian dapat ditelusuri. Layanan OpenRC dan wrapper operasional selalu
-menjalankan argumen `sufferage`; demo tidak perlu mengganti algoritma.
-
-## Batasan yang perlu dijelaskan
-
-- Task CPU saat ini memiliki rasio kerja 1:4:12; seluruh task memakai jenis komputasi yang sama. Belum ada workload I/O atau replay trafik produksi.
-- Waktu batching masuk ke latency klien. Batching tidak menjamin respons lebih cepat.
-- Bobot kapasitas belum dikalibrasi melalui benchmark CPU nyata.
-- Jumlah request per VM dan jumlah request/bobot punya interpretasi berbeda.
-- CSV menyimpan CT terbaik/kedua dan Sufferage saat terpilih, tetapi belum seluruh matriks kandidat setiap langkah.
-- Satu VM LB belum memiliki redundansi; health check menangani kegagalan backend.
-- Pada benchmark historis halaman nginx seragam, Round Robin memberi mean latency terendah;
-  Sufferage lebih mendekati pembagian bobot pada stabil/spike. Lihat contoh ringkasan.
+Jika worker gagal, task aktif ditandai failed dan task antreannya yang belum
+dijalankan ditandai skipped. Tidak ada rescheduling/retry tersembunyi. Timeout RPC
+dapat terjadi meskipun komputasi pada worker belum berhenti.

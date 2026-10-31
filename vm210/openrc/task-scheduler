@@ -1,0 +1,20 @@
+#!/sbin/openrc-run
+name="Sufferage task scheduler"
+description="Schedule dataset batches on four CPU worker VMs"
+supervisor="supervise-daemon"
+command="/usr/local/sbin/run-task-scheduler"
+required_files="/opt/sufferage-scheduler/scheduler.py /opt/sufferage-scheduler/sufferage.py /usr/bin/python3"
+output_log="/var/log/sufferage-scheduler/service.log"
+error_log="/var/log/sufferage-scheduler/error.log"
+respawn_delay=3
+respawn_max=5
+respawn_period=60
+retry="TERM/90/KILL/5"
+
+depend() {
+    need localmount net
+}
+
+start_pre() {
+    checkpath --directory --mode 0750 --owner root:root /var/log/sufferage-scheduler
+}

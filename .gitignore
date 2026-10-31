@@ -22,3 +22,6 @@ Thumbs.db
 
 # Generated local comparison from private test output
 /hasil_pengujian.html
+
+# Historical HTTP implementation retained locally; Git history preserves old versions
+/legacy/

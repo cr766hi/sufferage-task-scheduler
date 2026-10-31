@@ -1,3 +1,0 @@
-timestamp,scenario,request_id,backend,response_time_ms,status,error
-1793358382.3876376,stable,2904c9307bec-1,vm102,879.4492999995782,200,
-1793358382.391105,stable,5fddb8d3af23-1,vm202,882.0092999994813,200,

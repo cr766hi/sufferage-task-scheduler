@@ -1,3 +1,0 @@
-timestamp,algoritma,backend,response_time_ms,status,request_id,method,path,queue_ms,upstream_ms,estimated_work_ms,error
-2026-10-30T11:06:21.827057+00:00,sufferage,vm102,574.363,200,2904c9307bec-1,GET,/,152.98,419.073,20.0,
-2026-10-30T11:06:21.828562+00:00,sufferage,vm202,584.596,200,5fddb8d3af23-1,GET,/,196.741,383.711,20.0,
