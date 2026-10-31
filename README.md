@@ -152,3 +152,23 @@ paling awal dari tiap jenis yang perlu dievaluasi pada setiap langkah karena
 nilai Sufferage-nya identik. Tes differential memastikan seluruh alokasi, CT dan
 tie-break sama dengan perhitungan semua task, hingga batch 500 task. Ini optimasi
 perhitungan, bukan perubahan algoritma penjadwalan.
+
+## Menghapus hasil pengujian lokal
+
+Dari akar proyek, lihat daftar hasil terlebih dahulu (opsional):
+
+```powershell
+cd E:\testsokarealworld
+.\windows\hapus_hasil.ps1 -Preview
+```
+
+Untuk menghapus CSV `results/pengujian N.csv` dan membuat ulang halaman HTML hasil kosong:
+
+```powershell
+.\windows\hapus_hasil.ps1
+```
+
+Pengujian berikutnya mulai dari `pengujian 1.csv`. Refresh `hasil_pengujian.html`
+setelah pembersihan. Dataset input, kode, kalibrasi dan log hasil pada VM210 tetap
+tersimpan. Script menolak pembersihan ketika client pengujian lokal atau batch
+scheduler masih aktif. Tutup Excel jika CSV sedang dibuka.
