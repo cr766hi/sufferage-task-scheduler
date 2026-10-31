@@ -19,3 +19,6 @@ demo-results/
 *.zip
 .DS_Store
 Thumbs.db
+
+# Generated local comparison from private test output
+/hasil_pengujian.html

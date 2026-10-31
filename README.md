@@ -84,6 +84,10 @@ disalin ke folder backend; lokasi asalnya tercatat dalam [inventory](backends/in
 
 ## Cara melihat output Sufferage
 
+**Tabel hasil yang mudah dibaca:** buka `hasil_pengujian.html` setelah tes selesai,
+atau jalankan `.\.venv\Scripts\python.exe windows\lihat_hasil.py --open`.
+Tabel membandingkan performa dan pembagian backend seluruh pengujian.
+
 - **Keputusan backend:** respons HTTP memuat `X-LB-Backend: vm102` dan
   `X-LB-Algorithm: sufferage`, serta body berisi nama VM.
 - **Status saat ini:** endpoint `/__lb/health` menampilkan antrean, kesehatan,

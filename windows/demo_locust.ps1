@@ -36,6 +36,7 @@ try {
     Write-Host 'Jumlah user mengikuti ScenarioShape, bukan diatur manual dari UI.'
     Write-Host 'Setelah tes selesai, Ctrl+C, lalu jalankan skrip ini lagi untuk tes berikutnya.'
     Write-Host "Output: $demoDirectory\pengujian <nomor>.csv (satu file setiap tes)"
+    Write-Host "Tabel ringkas setelah tes: $(Join-Path $projectRoot 'hasil_pengujian.html')"
     if ($Scenario -eq 'fault') {
         Write-Host 'FAULT: skrip ini hanya menghasilkan trafik. Pemadaman VM dilakukan manual atau oleh run_experiments.py.'
     }

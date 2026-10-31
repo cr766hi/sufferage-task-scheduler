@@ -99,3 +99,11 @@ class SingleCsvReport:
         self.handle.close()
         self.handle = None
         print(f'Hasil lengkap tersimpan: {self.path}', flush=True)
+        # A display failure must not discard the completed source CSV.
+        try:
+            from lihat_hasil import generate_report
+            page = generate_report(self.path.parent.parent)
+            print(f'Tabel perbandingan: {page}', flush=True)
+        except Exception as error:
+            print(f'CSV tersimpan; tabel HTML belum diperbarui: {error}', flush=True)
+

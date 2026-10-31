@@ -110,6 +110,22 @@ $env:RUN_SEED = '1001'
 
 ## 6. Lihat satu CSV lengkap per pengujian
 
+**Tampilan utama untuk demo:** buka `hasil_pengujian.html` di akar proyek.
+Halaman menampilkan tabel performa (request, rata-rata, p95, throughput,
+error rate, gagal, durasi) dan tabel pembagian request per VM. Tidak perlu
+membaca tabel detail CSV saat presentasi. File HTML hanya satu untuk semua tes,
+dibuat ulang otomatis setelah tes selesai; tekan Refresh jika sudah terbuka.
+
+Untuk membuat ulang dan membuka di browser dari PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe windows\lihat_hasil.py --open
+```
+
+Setiap pengujian tetap menyimpan satu CSV sumber. HTML merupakan ringkasan
+tampilan lokal dan tidak diunggah ke GitHub.
+
+
 Pada laptop demo, folder proyek berada di `E:\testsokarealworld`.
 Hasil baru disimpan langsung sebagai:
 
