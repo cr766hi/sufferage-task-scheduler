@@ -11,7 +11,7 @@ program aktifnya sekarang task scheduler.
 
 ```powershell
 cd E:\testsokarealworld
-Get-Content .\datasets\demo40.csv | Select-Object -First 8
+Get-Content .\datasets\demo120.csv | Select-Object -First 8
 curl.exe --noproxy '*' http://192.168.56.10/api/health
 ```
 
@@ -45,9 +45,9 @@ nyata di VM, bukan log simulasi Windows.
 ```
 
 Script mengukur ETC tiap jenis task pada tiap VM (di luar makespan), lalu mengirim
-40 task sekaligus. vm210 menghitung seluruh jadwal Sufferage sebelum eksekusi.
+120 task sekaligus. vm210 menghitung seluruh jadwal Sufferage sebelum eksekusi.
 Task logis dijalankan satu per satu pada setiap worker, empat antrean berjalan
-paralel. Tunjukkan progress `N/40 task`, dan pindah ke SSH untuk melihat log live.
+paralel. Tunjukkan progress `N/120 task`, dan pindah ke SSH untuk melihat log live.
 Tidak ada Start Locust atau jumlah user virtual pada eksperimen ini.
 
 ## 5. Setelah batch selesai, buka tabel
@@ -90,12 +90,24 @@ Jika client terputus setelah submit, jangan mengirim ulang tanpa memeriksa statu
 Percobaan fault bukan bagian demo utama revisi ini. Worker gagal dicatat, task
 tersisa pada antrean worker tersebut di-skip; tidak ada retry atau migrasi task otomatis.
 
-## Opsional: batch lebih panjang untuk demonstrasi log dan sampling CPU
+## Pilihan jumlah task
+
+Default sekarang 120 task: 60 ringan, 36 sedang, 24 berat. Sebelum kalibrasi,
+script mencetak jumlah ketiga jenis task sehingga komposisi input terlihat.
+
+Untuk 240 task:
 
 ```powershell
-.\windows\demo_scheduler.ps1 -Dataset datasets\demo120.csv -ReuseCalibration
+.\windows\demo_scheduler.ps1 -Dataset datasets\demo240.csv -ReuseCalibration
 ```
 
-Dataset ini berisi 120 task (60 light, 36 medium, 24 heavy). Jumlah kerja meningkat;
-tidak ada penundaan buatan. Jangan membandingkan makespan dataset 40 dan 120 task
-sebagai perbedaan algoritma. Untuk pengulangan, pilih dataset yang sama.
+Untuk 500 task:
+
+```powershell
+.\windows\demo_scheduler.ps1 -Dataset datasets\demo500.csv -ReuseCalibration
+```
+
+Gunakan tanpa `-ReuseCalibration` jika ingin mengukur ulang ETC. Jumlah task besar
+menambah waktu planning dan eksekusi pada laptop emulasi. Batas scheduler 500 task
+per batch. Bandingkan pengulangan dengan dataset dan ETC yang sama; jumlah task
+berbeda tidak menunjukkan perbedaan algoritma. Rincian ada pada [dataset](../datasets/README.md).

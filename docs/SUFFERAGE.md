@@ -59,3 +59,10 @@ Sufferage adalah heuristik; pengujian fungsional tidak membuktikan optimalitas.
 Jika worker gagal, task aktif ditandai failed dan task antreannya yang belum
 dijalankan ditandai skipped. Tidak ada rescheduling/retry tersembunyi. Timeout RPC
 dapat terjadi meskipun komputasi pada worker belum berhenti.
+
+## Dataset yang tersedia
+
+Default demo sekarang 120 task. Dataset 240 dan 500 task memakai proporsi yang sama
+(50% ringan, 30% sedang, 20% berat), seed 42, tanpa mengubah biaya CPU tiap jenis.
+Dataset 40 task tetap merupakan sumber verifikasi tiga run pada laporan sebelumnya.
+Lihat [katalog dataset](../datasets/README.md).

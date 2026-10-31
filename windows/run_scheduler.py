@@ -1,5 +1,6 @@
 """Submit one dataset batch, watch progress, and save one numbered result CSV."""
 import argparse
+from collections import Counter
 import csv
 import hashlib
 import json
@@ -14,7 +15,7 @@ def main():
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server', default='http://192.168.56.10')
-    parser.add_argument('--dataset', type=Path, default=root / 'datasets/demo40.csv')
+    parser.add_argument('--dataset', type=Path, default=root / 'datasets/demo120.csv')
     parser.add_argument('--reuse-calibration', action='store_true')
     parser.add_argument('--resume', help='Batch ID, or latest; does not submit again')
     args = parser.parse_args()
@@ -36,6 +37,9 @@ def main():
     else:
         with args.dataset.open(encoding='utf-8-sig', newline='') as handle:
             tasks = list(csv.DictReader(handle))
+        counts = Counter(task['task_type'] for task in tasks)
+        print(f'Dataset: {args.dataset.name} | {len(tasks)} task', flush=True)
+        print(f"Ringan: {counts['light']} | Sedang: {counts['medium']} | Berat: {counts['heavy']}", flush=True)
         profiles = json.loads((root / 'workload/task_profiles.json').read_text())
         for task in tasks:
             if int(task['iterations_per_unit']) != profiles['iterations_per_unit']:

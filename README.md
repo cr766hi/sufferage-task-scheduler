@@ -11,7 +11,7 @@ masing-masing worker. HTTP dipakai untuk kontrol dan RPC eksekusi task.
 
 ```mermaid
 flowchart LR
-  D["Windows: datasets/demo40.csv"] -->|submit satu batch| S["vm210: Sufferage scheduler"]
+  D["Windows: datasets/demo120.csv"] -->|submit satu batch| S["vm210: Sufferage scheduler"]
   S --> A["vm101: worker 1 vCPU"]
   S --> B["vm102: worker 2 vCPU"]
   S --> C["vm201: worker 1 vCPU"]
@@ -34,10 +34,12 @@ curl.exe --noproxy '*' http://192.168.56.10/api/health
 .\windows\demo_scheduler.ps1
 ```
 
-Script mengkalibrasi ETC di luar waktu batch, mengirim 40 task, menunggu seluruh
+Script mengkalibrasi ETC di luar waktu batch, mengirim 120 task, menunggu seluruh
 antrean selesai, lalu menyimpan `results/pengujian N.csv` dan memperbarui
 `hasil_pengujian.html`. Tidak memakai Locust atau UI port 8089.
-Dataset demo tetap: 20 light, 12 medium, 8 heavy; urutan acak seed 42.
+Dataset demo standar: 120 task (60 ringan, 36 sedang, 24 berat), urutan acak seed 42.
+Pilihan 240 dan 500 task juga tersedia; [lihat komposisi dataset](datasets/README.md).
+Dataset 40 task tetap disimpan untuk referensi hasil verifikasi sebelumnya.
 Task ID, urutan dan ukuran sama pada pengujian ulang.
 
 Terminal lain untuk membuktikan eksekusi pada vm210:
@@ -60,7 +62,7 @@ tail -f /var/log/sufferage-scheduler/service.log
 | `vm210/scheduler.py` | API batch, antrean per worker, eksekusi dan metrik |
 | `vm210/openrc/` | Autostart service `task-scheduler` |
 | `backends/worker/` | Perhitungan CPU nyata, proses sesuai kapasitas VM |
-| `datasets/demo40.csv` | Dataset input yang dapat diperiksa |
+| `datasets/demo120.csv` | Dataset input yang dapat diperiksa |
 | `windows/demo_scheduler.ps1` | Perintah demo utama |
 | `windows/run_scheduler.py` | Pengirim dataset dan pemantau progress |
 | `windows/scheduler_report.py` | CSV lengkap dan HTML hasil scheduling |

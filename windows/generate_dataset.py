@@ -9,12 +9,13 @@ import random
 def main():
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--tasks', type=int, default=40)
+    parser.add_argument('--tasks', type=int, default=120)
     parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--output', type=Path, default=root / 'datasets/demo40.csv')
+    parser.add_argument('--output', type=Path, help='Default: datasets/demo<tasks>.csv')
     args = parser.parse_args()
     if not 1 <= args.tasks <= 500:
         parser.error('tasks must be between 1 and 500')
+    args.output = args.output or root / f'datasets/demo{args.tasks}.csv'
     profiles = json.loads((root / 'workload/task_profiles.json').read_text())
     light = args.tasks // 2
     medium = args.tasks * 3 // 10
