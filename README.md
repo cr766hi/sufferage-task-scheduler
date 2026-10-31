@@ -6,6 +6,9 @@ empat backend nginx + worker CPU ringan/sedang/berat. LB berjalan di **vm210** d
 
 ## Mulai membaca dari sini
 
+**Untuk presentasi:** [urutan demo langsung, termasuk SSH ke LB](docs/DEMO_SINGKAT.md).
+**Laporan terbaru:** [hasil uji task CPU dan resource utilization](docs/LAPORAN.md).
+
 1. [Arsitektur: isi host dan setiap VM](docs/ARSITEKTUR.md).
 2. [Langkah demo: nyalakan → cek LB → Locust → lihat output](docs/DEMO.md).
 3. [Cara kerja Sufferage dan fungsi kodenya](docs/SUFFERAGE.md).
@@ -72,6 +75,7 @@ di [panduan demo](docs/DEMO.md); kebijakan keamanan Windows tidak perlu diubah.
 | `vm210/` | vm210 | LB Python dan dependensi aiohttp |
 | `vm210/openrc/` | vm210 | Layanan autostart Sufferage dan pembuka proses |
 | `backends/vm101/` sampai `vm202/` | VM backend terkait | Salinan konfigurasi nginx dan halaman aktual |
+| `monitoring/` | Kelima guest VM | Pembaca CPU/RAM Linux untuk endpoint metrik |
 | `workload/` | Windows, vm210, backend | Profil task CPU dan proporsi campuran |
 | `backends/worker/` | Semua backend | Worker CPU Python di port 8080 dan layanan OpenRC |
 | `windows/` | Windows | Locust, pola beban, dan pembuka Web UI |
@@ -130,6 +134,18 @@ nilai Sufferage. Baca [cara kerja](docs/SUFFERAGE.md).
 Hasil benchmark 27 run di atas memakai **workload nginx seragam versi lama**.
 Hasil itu tidak menunjukkan performa campuran task CPU yang baru. Tabel menandai
 `uniform-nginx-v1` dan `mixed-cpu-v1` supaya keduanya dibaca terpisah.
+
+## Resource utilization
+
+Setiap tes demo mengambil sampel CPU dan RAM vm101/vm102/vm201/vm202 serta LB vm210
+tiap dua detik. Tabel HTML menampilkan rata-rata dan puncak CPU/RAM, RAM MiB,
+jumlah sampel berhasil/gagal, dan lama CPU teramati. CSV pengujian yang sama
+menyimpan baris `resource_sample` dan `resource_summary`; tidak ada file tambahan
+per tes. Data historis tanpa resource tetap kosong.
+
+Endpoint backend: `http://<IP>:8080/metrics`; LB: `/__lb/metrics`. Pengukuran guest
+menggunakan `/proc/stat` dan `/proc/meminfo`, tanpa psutil atau perubahan nginx.
+Detail rumus dan batasan: [RESOURCE.md](docs/RESOURCE.md).
 
 ## Catatan kesiapan demo
 

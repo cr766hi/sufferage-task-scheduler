@@ -15,7 +15,8 @@
       "/opt/task-worker/worker.py",
       "/opt/task-worker/task_profiles.json",
       "/etc/init.d/task-worker",
-      "/etc/conf.d/task-worker"
+      "/etc/conf.d/task-worker",
+      "/opt/task-worker/vm_metrics.py"
     ]
   },
   {
@@ -34,7 +35,8 @@
       "/opt/task-worker/worker.py",
       "/opt/task-worker/task_profiles.json",
       "/etc/init.d/task-worker",
-      "/etc/conf.d/task-worker"
+      "/etc/conf.d/task-worker",
+      "/opt/task-worker/vm_metrics.py"
     ]
   },
   {
@@ -53,7 +55,8 @@
       "/opt/task-worker/worker.py",
       "/opt/task-worker/task_profiles.json",
       "/etc/init.d/task-worker",
-      "/etc/conf.d/task-worker"
+      "/etc/conf.d/task-worker",
+      "/opt/task-worker/vm_metrics.py"
     ]
   },
   {
@@ -72,7 +75,8 @@
       "/opt/task-worker/worker.py",
       "/opt/task-worker/task_profiles.json",
       "/etc/init.d/task-worker",
-      "/etc/conf.d/task-worker"
+      "/etc/conf.d/task-worker",
+      "/opt/task-worker/vm_metrics.py"
     ]
   }
 ]

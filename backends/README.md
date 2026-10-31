@@ -31,3 +31,6 @@ identik lintas backend. `GET /health` tidak menjalankan komputasi task.
 Installer Windows `scripts/install_task_workers.py` memasang Python Alpine bila
 belum tersedia, menyalin worker dan profil, serta mengaktifkan service OpenRC
 `task-worker`. Tidak mengubah konfigurasi nginx. Lokasi runtime ada pada inventory.
+
+Endpoint `/metrics` worker membaca modul bersama `monitoring/vm_metrics.py`
+yang dipasang di `/opt/task-worker/vm_metrics.py`. Lihat [metrik resource](../docs/RESOURCE.md).

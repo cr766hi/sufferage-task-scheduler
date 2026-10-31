@@ -62,6 +62,7 @@ lab; jangan mencampur repository versi lain pada instalasi Alpine yang berbeda.
 
 ```text
 /opt/sufferage-lb/lb.py
+/opt/sufferage-lb/vm_metrics.py
 /opt/sufferage-lb/task_profiles.json
 /etc/init.d/sufferage-lb
 /usr/local/sbin/run-sufferage-lb

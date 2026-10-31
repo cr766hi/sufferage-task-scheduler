@@ -12,6 +12,6 @@ Kolom imbalance jumlah request/bobot membantu membaca kapasitas heterogen.
 CSV mentah lengkap, log sistem, disk VM, dan kredensial tidak diunggah ke repo.
 Pengujian demo baru menghasilkan file dalam `results/`, yang diabaikan Git.
 
-`source-provenance.json` memverifikasi 16 file terpasang pada worker keempat backend
+`source-provenance.json` memverifikasi 21 file terpasang pada worker keempat backend
 dan LB vm210 terhadap sumber repo dengan newline LF. Ringkasan benchmark di folder
 ini tetap memakai workload nginx seragam historis, bukan task CPU baru.

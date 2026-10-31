@@ -59,6 +59,7 @@ Sekarang setiap backend juga menjalankan Python worker CPU terpisah:
 
 ```text
 /opt/task-worker/worker.py
+/opt/task-worker/vm_metrics.py
 /opt/task-worker/task_profiles.json
 /etc/init.d/task-worker
 /etc/conf.d/task-worker
@@ -76,6 +77,7 @@ root yang kecil, dengan isi nama VM. File indeks masing-masing mengembalikan
 
 | Lokasi vm210 | Sumber di repo | Isi |
 |---|---|---|
+| `/opt/sufferage-lb/vm_metrics.py` | `monitoring/vm_metrics.py` | Endpoint resource guest LB |
 | `/opt/sufferage-lb/task_profiles.json` | `workload/task_profiles.json` | Estimasi awal dan jenis task |
 | `/opt/sufferage-lb/lb.py` | `vm210/lb.py` | HTTP proxy, antrean, scheduler, health check, CSV |
 | `/etc/init.d/sufferage-lb` | `vm210/openrc/sufferage-lb` | Layanan OpenRC autostart |

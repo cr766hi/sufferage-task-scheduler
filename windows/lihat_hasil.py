@@ -29,6 +29,7 @@ def read_results(directory):
             continue
         if summaries:
             summaries[-1]['_tasks'] = [row for row in all_rows if row.get('record_type') == 'task_summary']
+            summaries[-1]['_resources'] = [row for row in all_rows if row.get('record_type') == 'resource_summary']
             traces = [row for row in all_rows if row.get('record_type') == 'request'
                       and row.get('task_type') in ('light', 'medium', 'heavy') and row.get('sufferage_ms')]
             summaries[-1]['_trace'] = sorted(traces, key=lambda row: float(row['sufferage_ms']), reverse=True)[:8]
@@ -52,7 +53,7 @@ def cell(value, cls=''):
 def generate_report(root=ROOT):
     root = Path(root)
     results, pending = read_results(root / 'results')
-    performance, distribution, task_rows = [], [], []
+    performance, distribution, task_rows, resource_rows = [], [], [], []
     for path, row in results:
         label = row.get('pengujian', path.stem).capitalize()
         pattern = '10 → 40 → 10' if row.get('scenario') == 'spike' else '10'
@@ -76,6 +77,18 @@ def generate_report(root=ROOT):
             + ''.join(cell(fmt(count, 0)) for count in counts)
             + cell(fmt(row.get('unassigned_requests'), 0))
             + cell(fmt(row.get('load_imbalance_stddev'))) + '</tr>')
+        for resource in row.get('_resources', []):
+            vm = resource.get('backend', '')
+            resource_rows.append('<tr>' + cell(label, 'name')
+                + cell(vm + (' · LB' if vm == 'vm210' else ''), 'scenario')
+                + cell(fmt(resource.get('vcpus'), 0))
+                + cell(fmt(resource.get('cpu_avg_percent')))
+                + cell(fmt(resource.get('cpu_peak_percent')))
+                + cell(fmt(resource.get('ram_avg_percent')))
+                + cell(fmt(resource.get('ram_peak_percent')))
+                + cell(fmt(resource.get('ram_peak_used_mb'), 1) + ' / ' + fmt(resource.get('ram_total_mb'), 1))
+                + cell(fmt(resource.get('resource_ok_samples'), 0) + ' / ' + fmt(resource.get('resource_error_samples'), 0))
+                + cell(fmt(resource.get('resource_observed_seconds'), 1)) + '</tr>')
         for task in row.get('_tasks', []):
             kind = task.get('task_type', '')
             task_rows.append('<tr>' + cell(label, 'name') + cell(kind, 'scenario')
@@ -88,6 +101,8 @@ def generate_report(root=ROOT):
     if not performance:
         performance.append('<tr><td colspan="10" class="empty">Belum ada pengujian selesai. Jalankan Locust lalu tunggu tes berhenti.</td></tr>')
         distribution.append('<tr><td colspan="7" class="empty">Pembagian backend muncul setelah tes selesai.</td></tr>')
+    if not resource_rows:
+        resource_rows.append('<tr><td colspan="10" class="empty">Belum ada pengujian dengan pemantauan resource. Data lama tidak diisi dengan angka perkiraan.</td></tr>')
     latest = results[-1][1] if results else {}
     if not task_rows:
         task_rows.append('<tr><td colspan="10" class="empty">Belum ada tes mixed-cpu-v1 selesai. Tes lama hanya meminta halaman nginx.</td></tr>')
@@ -125,6 +140,7 @@ section{padding:24px;margin-top:22px}.scroll{overflow-x:auto;margin-top:20px}tab
 <section><h2>Perbandingan task ringan, sedang, dan berat</h2><p>Kerja CPU nyata: light = 2 unit, medium = 8 unit, heavy = 24 unit. Satu unit = 1.000 iterasi PBKDF2-SHA256. Campuran acak ditargetkan 50% / 30% / 20%.</p><div class="scroll"><table><thead><tr><th>Pengujian</th><th>Task</th><th>Request</th><th>Rata-rata<br>ms</th><th>P95<br>ms</th><th>Error rate</th><th>vm101</th><th>vm102</th><th>vm201</th><th>vm202</th></tr></thead><tbody>TASKROWS</tbody></table></div><p class="meta">Task identik dijalankan pada setiap VM; worker memakai 1 atau 2 proses sesuai vCPU. Rasio 1:4:12 adalah jumlah kerja, bukan jaminan rasio waktu respons. Waktu respons juga mencakup antrean dan jaringan.</p></section>
 <section><h2>Pembagian request per backend</h2><p>Kapasitas model vm101 : vm102 : vm201 : vm202 = 1 : 2 : 1 : 2.</p><div class="scroll"><table><thead><tr><th>Pengujian</th><th>vm101 · bobot 1</th><th>vm102 · bobot 2</th><th>vm201 · bobot 1</th><th>vm202 · bobot 2</th><th>Tanpa backend</th><th>Std dev jumlah request</th></tr></thead><tbody>DISTRIBUTION</tbody></table></div>
 <p class="meta">Hitungan mencakup sukses dan gagal setelah backend dipilih. Std dev memakai populasi empat VM. Karena kapasitas berbeda, jumlah request yang sama rata belum tentu lebih baik.</p></section>
+<section><h2>Resource utilization · CPU dan RAM</h2><p>Resource seluruh guest VM, termasuk layanan OS dan proses worker. Sampel diambil tiap 2 detik; vm210 adalah load balancer.</p><div class="scroll"><table><thead><tr><th>Pengujian</th><th>VM</th><th>vCPU</th><th>CPU rata-rata<br>%</th><th>CPU puncak<br>%</th><th>RAM rata-rata<br>%</th><th>RAM puncak<br>%</th><th>RAM puncak / total<br>MiB</th><th>Sampel<br>OK / gagal</th><th>CPU teramati<br>detik</th></tr></thead><tbody>RESOURCEROWS</tbody></table></div><p class="meta">CPU 100% berarti semua vCPU VM sibuk. CPU rata-rata dihitung dari total selisih busy/total ticks; puncak adalah interval sampel tertinggi. RAM terpakai = MemTotal − MemAvailable; rata-rata RAM adalah rata-rata sampel. Sampel CPU pertama memerlukan baseline sehingga belum punya persen. Tanda — berarti tidak tersedia, bukan 0%. Tes lama tanpa sampel tidak ditampilkan.</p><p class="meta">Ini pengukuran guest, bukan CPU/RAM laptop fisik atau host Proxmox. Pemantauan menambah sedikit beban dan tidak masuk hitungan request/throughput Locust. Metrik ini untuk evaluasi; algoritma Sufferage tetap memakai estimasi kerja dan ready time.</p></section>
 <section><details><summary><strong>Lihat bukti perhitungan Sufferage · pengujian terakhir</strong></summary><p>Delapan request dengan nilai Sufferage tertinggi yang terekam. Setiap angka dihitung pada giliran penjadwalan request dalam mini-batch.</p><div class="scroll"><table><thead><tr><th>Task</th><th>Backend terbaik</th><th>Estimasi kerja<br>ms @ kapasitas 1</th><th>CT terbaik<br>ms</th><th>CT kedua<br>ms</th><th>Sufferage<br>ms</th><th>Batch</th><th>Urutan alokasi</th></tr></thead><tbody>TRACEROWS</tbody></table></div><p class="meta">Sufferage = CT kedua − CT terbaik. CT relatif terhadap saat batch dijadwalkan, bukan durasi CPU aktual. Prioritas dihitung ulang setelah setiap alokasi; nilai nol sah ketika dua backend terbaik sama baiknya. Ini jejak pilihan scheduler, bukan seluruh matriks kandidat.</p></details></section>
 PENDING<section><h2>Cara membaca metrik evaluasi</h2><div class="notes"><div><strong>Waktu respons: rata-rata &amp; P95</strong><p>Rata-rata merangkum semua request. P95 adalah batas waktu yang mencakup sedikitnya 95% request (nearest rank). Keduanya mencakup request gagal.</p></div><div><strong>Throughput &amp; error rate</strong><p>Throughput = request selesai ÷ durasi aktual, termasuk penyelesaian request terakhir. Error rate = request gagal ÷ total × 100%; mencakup timeout, HTTP gagal, dan validasi respons.</p></div><div><strong>Perbandingan yang adil</strong><p>Bandingkan skenario dan durasi yang sama, minimal tiga pengulangan. Pisahkan workload uniform-nginx-v1 (tes lama) dari mixed-cpu-v1 (task bervariasi). Jangan membandingkan keduanya sebagai peningkatan algoritma. Semua tes demo menggunakan Sufferage; keunggulan atas algoritma lain perlu eksperimen pembanding.</p></div></div></section>
 <footer>Sumber: satu CSV per pengujian di folder results. Halaman diperbarui otomatis saat tes selesai. Jika halaman sudah terbuka, tekan Refresh. Untuk membuat ulang: .venv\\Scripts\\python.exe windows\\lihat_hasil.py</footer>
@@ -132,7 +148,8 @@ PENDING<section><h2>Cara membaca metrik evaluasi</h2><div class="notes"><div><st
     for marker, value in [('UPDATED', escape(updated)), ('CARDS', cards),
                           ('PERFORMANCE', ''.join(performance)),
                           ('DISTRIBUTION', ''.join(distribution)), ('TASKROWS', ''.join(task_rows)),
-                          ('TRACEROWS', ''.join(trace_rows)), ('PENDING', pending_html)]:
+                          ('TRACEROWS', ''.join(trace_rows)), ('RESOURCEROWS', ''.join(resource_rows)),
+                          ('PENDING', pending_html)]:
         html = html.replace(marker, value)
     output = root / 'hasil_pengujian.html'
     output.write_text(html, encoding='utf-8')

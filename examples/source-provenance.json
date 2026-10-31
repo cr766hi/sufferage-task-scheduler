@@ -3,7 +3,13 @@
     "host": "192.168.56.21",
     "repo_file": "backends/worker/worker.py",
     "deployed_file": "/opt/task-worker/worker.py",
-    "sha256_lf": "4916025a4d628c2d3e270f18751ff50f4c6e1ea8fed7313615fbf878c902dc29"
+    "sha256_lf": "466b60f8c0affcd85d9be9b7453fbeb538c3ba38dc74e00c4c4da5a38e7971bd"
+  },
+  {
+    "host": "192.168.56.21",
+    "repo_file": "monitoring/vm_metrics.py",
+    "deployed_file": "/opt/task-worker/vm_metrics.py",
+    "sha256_lf": "adba01388a1bd6cebc3b9967c501c82696ac657cfee96ae466e7229c40f3b96f"
   },
   {
     "host": "192.168.56.21",
@@ -21,7 +27,13 @@
     "host": "192.168.56.22",
     "repo_file": "backends/worker/worker.py",
     "deployed_file": "/opt/task-worker/worker.py",
-    "sha256_lf": "4916025a4d628c2d3e270f18751ff50f4c6e1ea8fed7313615fbf878c902dc29"
+    "sha256_lf": "466b60f8c0affcd85d9be9b7453fbeb538c3ba38dc74e00c4c4da5a38e7971bd"
+  },
+  {
+    "host": "192.168.56.22",
+    "repo_file": "monitoring/vm_metrics.py",
+    "deployed_file": "/opt/task-worker/vm_metrics.py",
+    "sha256_lf": "adba01388a1bd6cebc3b9967c501c82696ac657cfee96ae466e7229c40f3b96f"
   },
   {
     "host": "192.168.56.22",
@@ -39,7 +51,13 @@
     "host": "192.168.56.31",
     "repo_file": "backends/worker/worker.py",
     "deployed_file": "/opt/task-worker/worker.py",
-    "sha256_lf": "4916025a4d628c2d3e270f18751ff50f4c6e1ea8fed7313615fbf878c902dc29"
+    "sha256_lf": "466b60f8c0affcd85d9be9b7453fbeb538c3ba38dc74e00c4c4da5a38e7971bd"
+  },
+  {
+    "host": "192.168.56.31",
+    "repo_file": "monitoring/vm_metrics.py",
+    "deployed_file": "/opt/task-worker/vm_metrics.py",
+    "sha256_lf": "adba01388a1bd6cebc3b9967c501c82696ac657cfee96ae466e7229c40f3b96f"
   },
   {
     "host": "192.168.56.31",
@@ -57,7 +75,13 @@
     "host": "192.168.56.32",
     "repo_file": "backends/worker/worker.py",
     "deployed_file": "/opt/task-worker/worker.py",
-    "sha256_lf": "4916025a4d628c2d3e270f18751ff50f4c6e1ea8fed7313615fbf878c902dc29"
+    "sha256_lf": "466b60f8c0affcd85d9be9b7453fbeb538c3ba38dc74e00c4c4da5a38e7971bd"
+  },
+  {
+    "host": "192.168.56.32",
+    "repo_file": "monitoring/vm_metrics.py",
+    "deployed_file": "/opt/task-worker/vm_metrics.py",
+    "sha256_lf": "adba01388a1bd6cebc3b9967c501c82696ac657cfee96ae466e7229c40f3b96f"
   },
   {
     "host": "192.168.56.32",
@@ -75,7 +99,13 @@
     "host": "192.168.56.10",
     "repo_file": "vm210/lb.py",
     "deployed_file": "/opt/sufferage-lb/lb.py",
-    "sha256_lf": "688d91fac65cbf95b7ff7fa6f963a1bce00948f4b0465e179090e9eb404b8aab"
+    "sha256_lf": "327b0cc5c0eaba4a1824c769efa857088b32bce6cc9740a9f78bcf616350cb53"
+  },
+  {
+    "host": "192.168.56.10",
+    "repo_file": "monitoring/vm_metrics.py",
+    "deployed_file": "/opt/sufferage-lb/vm_metrics.py",
+    "sha256_lf": "adba01388a1bd6cebc3b9967c501c82696ac657cfee96ae466e7229c40f3b96f"
   },
   {
     "host": "192.168.56.10",

@@ -10,12 +10,20 @@ import csv
 import itertools
 import json
 import signal
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from aiohttp import ClientSession, ClientTimeout, TCPConnector, web
+
+
+try:
+    from vm_metrics import snapshot as resource_snapshot
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'monitoring'))
+    from vm_metrics import snapshot as resource_snapshot
 
 HOP_HEADERS = {'connection', 'keep-alive', 'proxy-authenticate',
                'proxy-authorization', 'te', 'trailer', 'transfer-encoding',
@@ -156,6 +164,12 @@ class LoadBalancer:
             await asyncio.sleep(1)
             await asyncio.gather(*(self.probe(b) for b in self.backends))
             self.log_file.flush()
+
+    async def metrics(self, request):
+        try:
+            return web.json_response(resource_snapshot('vm210'))
+        except (OSError, ValueError, KeyError) as error:
+            return web.json_response({'error': type(error).__name__ + ': ' + str(error)}, status=503)
 
     async def health(self, request):
         return web.json_response({'algorithm': self.args.mode,
@@ -318,6 +332,7 @@ def main():
     lb = LoadBalancer(args)
     app = web.Application(client_max_size=2 * 1024 * 1024)
     app.router.add_get('/__lb/health', lb.health)
+    app.router.add_get('/__lb/metrics', lb.metrics)
     app.router.add_route('*', '/{tail:.*}', lb.handle)
     app.on_startup.append(lb.start)
     app.on_cleanup.append(lb.stop)

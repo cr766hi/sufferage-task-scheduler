@@ -8,8 +8,16 @@ import json
 import multiprocessing
 from pathlib import Path
 import threading
+import sys
 import time
 from urllib.parse import urlsplit
+
+
+try:
+    from vm_metrics import snapshot as resource_snapshot
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'monitoring'))
+    from vm_metrics import snapshot as resource_snapshot
 
 
 def compute_units(indices, iterations):
@@ -57,6 +65,12 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         common = dict(backend=self.server.backend, capacity=self.server.capacity,
                       workload=self.server.profiles['workload_id'])
+        if path == '/metrics':
+            try:
+                self.respond(200, resource_snapshot(self.server.backend))
+            except (OSError, ValueError, KeyError) as error:
+                self.respond(503, {'error': type(error).__name__ + ': ' + str(error)})
+            return
         if path == '/health':
             self.respond(200, {**common, 'tasks': self.server.profiles['tasks']})
             return

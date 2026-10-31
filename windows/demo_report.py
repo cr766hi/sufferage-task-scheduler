@@ -23,6 +23,12 @@ FIELDS = [
     'estimated_work_ms', 'queue_ms', 'upstream_ms', 'sufferage_ms',
     'best_ct_ms', 'second_ct_ms', 'batch_id', 'assignment_order',
     'light_requests', 'medium_requests', 'heavy_requests',
+    'resource_status', 'resource_source_timestamp_utc', 'resource_interval_seconds',
+    'cpu_percent', 'cpu_busy_delta_ticks', 'cpu_total_delta_ticks', 'vcpus',
+    'ram_percent', 'ram_used_mb', 'ram_available_mb', 'ram_total_mb',
+    'cpu_avg_percent', 'cpu_peak_percent', 'ram_avg_percent', 'ram_peak_percent',
+    'ram_avg_used_mb', 'ram_peak_used_mb', 'resource_ok_samples',
+    'resource_error_samples', 'cpu_valid_samples', 'resource_observed_seconds',
 ]
 
 
@@ -54,6 +60,7 @@ class SingleCsvReport:
                          workload='mixed-cpu-v1' if os.environ.get('WORKLOAD', 'mixed') == 'mixed' else 'uniform-nginx-v1')
         self.started = time.perf_counter()
         self.rows = []
+        self.resources = {}
         self.write('config', initial_health_json=health)
 
     def write(self, record_type, **values):
@@ -85,6 +92,31 @@ class SingleCsvReport:
                    status=status, success=success, error=error, active_users=active_users,
                    elapsed_seconds=round(time.perf_counter() - self.started, 6),
                    task_type=task_type, **trace)
+
+    def resource(self, sample):
+        if self.handle is None:
+            return
+        self.resources.setdefault(sample['backend'], []).append(sample)
+        self.write('resource_sample', elapsed_seconds=round(time.perf_counter() - self.started, 6),
+                   **sample)
+
+    def resource_summaries(self):
+        for vm, samples in sorted(self.resources.items()):
+            valid = [sample for sample in samples if sample['resource_status'] == 'ok']
+            cpu = [sample for sample in valid if 'cpu_percent' in sample]
+            total = sum(sample['cpu_total_delta_ticks'] for sample in cpu)
+            self.write('resource_summary', backend=vm,
+                resource_ok_samples=len(valid), resource_error_samples=len(samples) - len(valid),
+                cpu_valid_samples=len(cpu),
+                resource_observed_seconds=sum(sample['resource_interval_seconds'] for sample in cpu),
+                cpu_avg_percent=100 * sum(sample['cpu_busy_delta_ticks'] for sample in cpu) / total if total else '',
+                cpu_peak_percent=max((sample['cpu_percent'] for sample in cpu), default=''),
+                ram_avg_percent=statistics.mean(sample['ram_percent'] for sample in valid) if valid else '',
+                ram_peak_percent=max((sample['ram_percent'] for sample in valid), default=''),
+                ram_avg_used_mb=statistics.mean(sample['ram_used_mb'] for sample in valid) if valid else '',
+                ram_peak_used_mb=max((sample['ram_used_mb'] for sample in valid), default=''),
+                ram_total_mb=valid[-1]['ram_total_mb'] if valid else '',
+                vcpus=valid[-1]['vcpus'] if valid else '')
 
     @staticmethod
     def metrics(rows, duration):
@@ -121,6 +153,7 @@ class SingleCsvReport:
                            **self.metrics(rows, duration),
                            **{backend + '_requests': sum(row[0] == backend for row in rows)
                               for backend in BACKENDS})
+        self.resource_summaries()
         self.handle.close()
         self.handle = None
         print(f'Hasil lengkap tersimpan: {self.path}', flush=True)

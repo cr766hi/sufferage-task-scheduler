@@ -1,5 +1,7 @@
 # Demo Sufferage: nyalakan, cek, jalankan Locust, lihat hasil
 
+Untuk urutan presentasi singkat termasuk SSH ke vm210: [DEMO_SINGKAT.md](DEMO_SINGKAT.md).
+
 ## 1. Nyalakan infrastruktur
 
 Nyalakan pve1/pve2 di VirtualBox. Tunggu Proxmox siap, lalu pastikan VM
@@ -159,6 +161,8 @@ CSV UTF-8 menyertakan satu header dan kolom `record_type`:
 | `config` | Skenario, algoritma, target, durasi rencana, pola user, seed, health awal |
 | `request` | Waktu UTC, detik sejak mulai, user aktif, request ID, backend, respons ms, ukuran, status, error |
 | `summary` | Durasi aktual, total/sukses/gagal, rata-rata, p95, request/detik, error %, hitungan per VM, std dev |
+| `resource_sample` | Sampel CPU/RAM atau error pemantauan tiap VM |
+| `resource_summary` | Rata-rata/puncak CPU/RAM, sampel OK/gagal, durasi teramati |
 | `task_summary` | Total, rata-rata, p95, error dan pembagian backend untuk light/medium/heavy |
 | `backend_summary` | Total, sukses/gagal, rata-rata, p95, throughput dan error % untuk masing-masing VM |
 
@@ -249,3 +253,20 @@ diklaim terpasang; grafik yang ditampilkan adalah grafik pengukuran Locust.
 
 Jika Locust sudah terbuka sebelum perubahan kode, Ctrl+C lalu jalankan helper lagi
 agar proses memuat kode terbaru. Jangan sekadar menekan Start pada proses lama.
+
+### Resource utilization saat demo
+
+Setelah tes selesai, buka tabel **Resource utilization · CPU dan RAM** pada HTML.
+Bandingkan CPU rata-rata/puncak dan RAM rata-rata/puncak pada setiap backend serta
+vm210. Kolom sampel OK/gagal membantu membaca skenario fault. Metrik tidak tersedia
+pada tes lama sebelum collector dipasang; jalankan tes baru. Definisi dan sumber
+pengukuran ada di [RESOURCE.md](RESOURCE.md).
+
+Untuk cek endpoint LB secara manual:
+
+```powershell
+curl.exe --noproxy '*' http://192.168.56.10/__lb/metrics
+```
+
+Endpoint mengembalikan counter CPU mentah dan RAM snapshot. Persen CPU memerlukan
+dua snapshot; collector menghitungnya otomatis selama tes.

@@ -22,12 +22,13 @@ handle = None
 started = None
 report = None
 report_environment = None
+resource_monitor = None
 SINGLE_CSV_DIR = os.environ.get('SINGLE_CSV_DIR')
 
 
 @events.test_start.add_listener
 def open_log(environment, **kwargs):
-    global writer, handle, started, report, report_environment
+    global writer, handle, started, report, report_environment, resource_monitor
     started = time.perf_counter()
     random.seed(int(os.environ.get('RUN_SEED', '1001')))
     if SINGLE_CSV_DIR:
@@ -41,6 +42,11 @@ def open_log(environment, **kwargs):
             os.environ.get('LB_INITIAL_HEALTH', ''),
             environment.host or 'http://192.168.56.10')
         print(f'File hasil pengujian: {report.path}', flush=True)
+        if os.environ.get('RESOURCE_MONITOR', '1') != '0':
+            from resource_monitor import ResourceMonitor
+            resource_monitor = ResourceMonitor(report)
+            resource_monitor.start()
+
         return
     if REQUEST_CSV:
         Path(REQUEST_CSV).parent.mkdir(parents=True, exist_ok=True)
@@ -82,6 +88,8 @@ def request_log(request_type, name, response_time, response_length,
 def close_log(environment, **kwargs):
     global writer, handle
     if SINGLE_CSV_DIR:
+        if resource_monitor is not None:
+            resource_monitor.stop()
         if report is not None:
             report.finish()
         return

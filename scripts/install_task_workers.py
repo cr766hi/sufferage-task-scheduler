@@ -32,6 +32,7 @@ def main():
             print(name, command('command -v python3 || apk add --no-cache python3', 240), flush=True)
             command('mkdir -p /root/task-worker-install /opt/task-worker')
             for local, remote in [('backends/worker/worker.py', 'worker.py'),
+                                  ('monitoring/vm_metrics.py', 'vm_metrics.py'),
                                   ('backends/worker/task-worker', 'task-worker'),
                                   ('workload/task_profiles.json', 'task_profiles.json')]:
                 stdin, out, err = client.exec_command('umask 077; cat > /root/task-worker-install/' + remote)
@@ -41,12 +42,13 @@ def main():
                 if out.channel.recv_exit_status():
                     raise RuntimeError(name + ': ' + err.read().decode())
             script = '''set -eu
-python3 -m py_compile /root/task-worker-install/worker.py
+python3 -m py_compile /root/task-worker-install/worker.py /root/task-worker-install/vm_metrics.py
 sh -n /root/task-worker-install/task-worker
 if test -x /etc/init.d/task-worker && rc-service task-worker status >/dev/null 2>&1; then rc-service task-worker stop; fi
 for item in /opt/task-worker/worker.py /opt/task-worker/task_profiles.json /etc/init.d/task-worker /etc/conf.d/task-worker; do
     if test -f "$item" && ! test -f "$item.before-cpu-install"; then cp -p "$item" "$item.before-cpu-install"; fi
 done
+cp /root/task-worker-install/vm_metrics.py /opt/task-worker/vm_metrics.py
 cp /root/task-worker-install/worker.py /opt/task-worker/worker.py
 cp /root/task-worker-install/task_profiles.json /opt/task-worker/task_profiles.json
 cp /root/task-worker-install/task-worker /etc/init.d/task-worker
