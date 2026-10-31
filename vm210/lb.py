@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+"""Small experimental reverse proxy. Requires aiohttp; no backend changes.
+
+Latency includes the Sufferage batch wait. Capacity weights are model inputs,
+not measured CPU capacity. No artificial processing delays are injected.
+"""
+import argparse
+import asyncio
+import csv
+import itertools
+import json
+import signal
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+from aiohttp import ClientSession, ClientTimeout, TCPConnector, web
+
+HOP_HEADERS = {'connection', 'keep-alive', 'proxy-authenticate',
+               'proxy-authorization', 'te', 'trailer', 'transfer-encoding',
+               'upgrade', 'content-length'}
+
+
+@dataclass
+class Backend:
+    name: str
+    url: str
+    capacity: float
+    healthy: bool = False
+    active: int = 0
+    ready_time: float = 0.0
+    cooldown_until: float = 0.0
+
+
+def sufferage_plan(jobs, backends, now):
+    """Return (job, backend, predicted_seconds), updating virtual ready times.
+
+    Jobs expose .work (seconds on a capacity-one backend) and .sequence.
+    No await occurs during planning, so reservations are atomic on the event loop.
+    """
+    remaining = list(jobs)
+    result = []
+    while remaining:
+        choices = []
+        for job in remaining:
+            times = sorted(
+                ((max(now, b.ready_time) + job.work / b.capacity, i, b)
+                 for i, b in enumerate(backends)), key=lambda item: (item[0], item[1]))
+            best_ct, _, best = times[0]
+            difference = times[1][0] - best_ct if len(times) > 1 else 0.0
+            choices.append((difference, -job.sequence, job, best, best_ct))
+        _, _, job, best, best_ct = max(choices, key=lambda item: item[:2])
+        best.ready_time = best_ct
+        result.append((job, best, job.work / best.capacity))
+        remaining.remove(job)
+    return result
+
+
+@dataclass
+class Job:
+    sequence: int
+    request: object
+    body: bytes
+    arrival: float
+    timestamp: str
+    work: float
+    future: object
+
+
+class LoadBalancer:
+    def __init__(self, args):
+        self.args = args
+        self.backends = [Backend('vm101', 'http://192.168.56.21', 1),
+                         Backend('vm102', 'http://192.168.56.22', 2),
+                         Backend('vm201', 'http://192.168.56.31', 1),
+                         Backend('vm202', 'http://192.168.56.32', 2)]
+        self.pending = asyncio.Queue(maxsize=args.queue_limit)
+        self.sequence = itertools.count()
+        self.rr = 0
+        self.estimates = {}
+        self.tasks = set()
+        self.running = True
+        path = Path(args.csv)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.log_file = path.open('x', newline='', encoding='utf-8')
+        self.log = csv.writer(self.log_file)
+        self.log.writerow(['timestamp', 'algoritma', 'backend', 'response_time_ms',
+                           'status', 'request_id', 'method', 'path', 'queue_ms',
+                           'upstream_ms', 'estimated_work_ms', 'error'])
+        self.log_file.flush()
+
+    async def start(self, app):
+        self.session = ClientSession(timeout=ClientTimeout(total=self.args.timeout),
+                                     connector=TCPConnector(limit=128),
+                                     auto_decompress=False, trust_env=False)
+        await asyncio.gather(*(self.probe(b) for b in self.backends))
+        self.background = [asyncio.create_task(self.scheduler()),
+                           asyncio.create_task(self.health_loop())]
+
+    async def stop(self, app):
+        self.running = False
+        for task in self.background:
+            task.cancel()
+        await asyncio.gather(*self.background, return_exceptions=True)
+        while not self.pending.empty():
+            job = self.pending.get_nowait()
+            self.fail(job, 503, 'Proxy shutting down')
+        if self.tasks:
+            await asyncio.gather(*self.tasks, return_exceptions=True)
+        await self.session.close()
+        self.log_file.flush()
+        self.log_file.close()
+
+    async def probe(self, backend):
+        if time.monotonic() < backend.cooldown_until:
+            return
+        try:
+            async with self.session.get(backend.url + '/', timeout=ClientTimeout(total=1.5)) as response:
+                await response.read()
+                backend.healthy = response.status == 200
+        except (OSError, asyncio.TimeoutError) as exc:
+            backend.healthy = False
+        except Exception as exc:
+            backend.healthy = False
+            print('Health probe:', backend.name, repr(exc), flush=True)
+
+    async def health_loop(self):
+        while True:
+            await asyncio.sleep(1)
+            await asyncio.gather(*(self.probe(b) for b in self.backends))
+            self.log_file.flush()
+
+    async def health(self, request):
+        return web.json_response({'algorithm': self.args.mode,
+                                  'queued': self.pending.qsize(),
+                                  'backends': [{'name': b.name, 'healthy': b.healthy,
+                                                'active': b.active, 'capacity': b.capacity}
+                                               for b in self.backends]})
+
+    async def handle(self, request):
+        now = time.monotonic()
+        job = Job(next(self.sequence), request, await request.read(), now,
+                  datetime.now(timezone.utc).isoformat(),
+                  self.estimates.get(request.path, self.args.initial_work_ms / 1000),
+                  asyncio.get_running_loop().create_future())
+        try:
+            self.pending.put_nowait(job)
+        except asyncio.QueueFull:
+            self.fail(job, 503, 'Admission queue full')
+        return await asyncio.shield(job.future)
+
+    def record(self, job, backend, status, queue_ms=0, upstream_ms=0, error=''):
+        self.log.writerow([job.timestamp, self.args.mode, backend,
+                           round((time.monotonic() - job.arrival) * 1000, 3), status,
+                           job.request.headers.get('X-Request-ID', str(job.sequence)),
+                           job.request.method, job.request.path_qs, round(queue_ms, 3),
+                           round(upstream_ms, 3), round(job.work * 1000, 3), error])
+
+    def fail(self, job, status, message):
+        self.record(job, 'none', status, error=message)
+        if not job.future.done():
+            job.future.set_result(web.Response(status=status, text=message))
+
+    async def scheduler(self):
+        while True:
+            first = await self.pending.get()
+            batch = [first]
+            if self.args.mode == 'sufferage':
+                deadline = first.arrival + self.args.batch_ms / 1000
+                while len(batch) < self.args.batch_size:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    try:
+                        batch.append(await asyncio.wait_for(self.pending.get(), remaining))
+                    except asyncio.TimeoutError:
+                        break
+            now = time.monotonic()
+            available = [b for b in self.backends if b.healthy and b.cooldown_until <= now]
+            if not available:
+                for job in batch:
+                    self.fail(job, 503, 'No healthy backend')
+                continue
+            if self.args.mode == 'sufferage':
+                plan = sufferage_plan(batch, available, now)
+                for job, backend, predicted in plan:
+                    self.dispatch(job, backend, predicted)
+            else:
+                for job in batch:
+                    if self.args.mode == 'round_robin':
+                        backend = available[self.rr % len(available)]
+                        self.rr += 1
+                    else:
+                        minimum = min(b.active for b in available)
+                        ties = [b for b in available if b.active == minimum]
+                        backend = ties[self.rr % len(ties)]
+                        self.rr += 1
+                    self.dispatch(job, backend, job.work / backend.capacity)
+
+    def dispatch(self, job, backend, predicted):
+        backend.active += 1
+        task = asyncio.create_task(self.forward(job, backend, predicted))
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+
+    async def forward(self, job, backend, predicted):
+        start = time.monotonic()
+        queue_ms = (start - job.arrival) * 1000
+        try:
+            connection_tokens = {s.strip().lower() for s in job.request.headers.get('Connection', '').split(',')}
+            headers = {k: v for k, v in job.request.headers.items()
+                       if k.lower() not in HOP_HEADERS | connection_tokens | {'host'}}
+            async with self.session.request(job.request.method,
+                    backend.url + job.request.path_qs, headers=headers,
+                    data=job.body or None, allow_redirects=False) as response:
+                body = await response.read()
+                elapsed = time.monotonic() - start
+                response_connection = {s.strip().lower() for s in response.headers.get('Connection', '').split(',')}
+                out_headers = {k: v for k, v in response.headers.items()
+                               if k.lower() not in HOP_HEADERS | response_connection}
+                out_headers['X-LB-Backend'] = backend.name
+                out_headers['X-LB-Algorithm'] = self.args.mode
+                result = web.Response(status=response.status, headers=out_headers, body=body)
+                if response.status < 500:
+                    previous = self.estimates.get(job.request.path, self.args.initial_work_ms / 1000)
+                    self.estimates[job.request.path] = max(0.0001, .8 * previous + .2 * elapsed * backend.capacity)
+                self.record(job, backend.name, response.status, queue_ms, elapsed * 1000)
+        except Exception as exc:
+            backend.healthy = False
+            backend.cooldown_until = time.monotonic() + 2
+            self.record(job, backend.name, 502, queue_ms,
+                        (time.monotonic() - start) * 1000,
+                        type(exc).__name__ + ': ' + str(exc))
+            result = web.Response(status=502, text='Upstream unavailable',
+                                  headers={'X-LB-Backend': backend.name})
+        finally:
+            backend.active -= 1
+            backend.ready_time = max(time.monotonic(), backend.ready_time - predicted)
+        if not job.future.done():
+            job.future.set_result(result)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('mode', choices=['round_robin', 'least_connections', 'sufferage'])
+    parser.add_argument('--port', type=int, default=80)
+    parser.add_argument('--csv', required=True, help='New file; existing CSV is never overwritten')
+    parser.add_argument('--batch-size', type=int, default=20)
+    parser.add_argument('--batch-ms', type=float, default=75)
+    parser.add_argument('--timeout', type=float, default=3)
+    parser.add_argument('--initial-work-ms', type=float, default=20)
+    parser.add_argument('--queue-limit', type=int, default=1000)
+    args = parser.parse_args()
+    if args.batch_size < 1 or args.batch_ms <= 0 or args.timeout <= 0:
+        parser.error('batch-size, batch-ms and timeout must be positive')
+    lb = LoadBalancer(args)
+    app = web.Application(client_max_size=2 * 1024 * 1024)
+    app.router.add_get('/__lb/health', lb.health)
+    app.router.add_route('*', '/{tail:.*}', lb.handle)
+    app.on_startup.append(lb.start)
+    app.on_cleanup.append(lb.stop)
+    web.run_app(app, host='0.0.0.0', port=args.port, shutdown_timeout=10)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,2 @@
+locust==2.47.0
+paramiko==5.1.0

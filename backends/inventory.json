@@ -1,0 +1,46 @@
+[
+  {
+    "vm": "vm101",
+    "ip": "192.168.56.21",
+    "files": [
+      "/etc/nginx/nginx.conf",
+      "/etc/nginx/mime.types",
+      "/etc/nginx/http.d/default.conf",
+      "/var/www/localhost/htdocs/index.html"
+    ],
+    "index": "/var/www/localhost/htdocs/index.html"
+  },
+  {
+    "vm": "vm102",
+    "ip": "192.168.56.22",
+    "files": [
+      "/etc/nginx/nginx.conf",
+      "/etc/nginx/mime.types",
+      "/etc/nginx/http.d/default.conf",
+      "/var/www/localhost/htdocs/index.html"
+    ],
+    "index": "/var/www/localhost/htdocs/index.html"
+  },
+  {
+    "vm": "vm201",
+    "ip": "192.168.56.31",
+    "files": [
+      "/etc/nginx/nginx.conf",
+      "/etc/nginx/mime.types",
+      "/etc/nginx/http.d/default.conf",
+      "/var/www/localhost/htdocs/index.html"
+    ],
+    "index": "/var/www/localhost/htdocs/index.html"
+  },
+  {
+    "vm": "vm202",
+    "ip": "192.168.56.32",
+    "files": [
+      "/etc/nginx/nginx.conf",
+      "/etc/nginx/mime.types",
+      "/etc/nginx/http.d/default.conf",
+      "/var/www/localhost/htdocs/index.html"
+    ],
+    "index": "/var/www/localhost/htdocs/index.html"
+  }
+]

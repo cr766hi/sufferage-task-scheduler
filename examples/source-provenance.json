@@ -1,0 +1,17 @@
+[
+  {
+    "repo_file": "vm210/lb.py",
+    "vm210_file": "/opt/sufferage-lb/lb.py",
+    "sha256": "14b059f41da94df543efcc21a46efd6f6bc79010919a4f193a04815d862e3aa0"
+  },
+  {
+    "repo_file": "vm210/openrc/sufferage-lb",
+    "vm210_file": "/etc/init.d/sufferage-lb",
+    "sha256": "2e63fb8a452eae4e2b1d209442058bd7b9a76a5bbebbf63b1a617785394a89ab"
+  },
+  {
+    "repo_file": "vm210/openrc/run-sufferage-lb",
+    "vm210_file": "/usr/local/sbin/run-sufferage-lb",
+    "sha256": "29e4a0fbc05beea5cd0345739672e039b3fc9fd3f956cea64186ecf26589bf0a"
+  }
+]
