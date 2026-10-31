@@ -86,8 +86,8 @@ Jumlah user mengikuti `ScenarioShape` dalam `locustfile.py`, bukan diisi bebas:
 | `fault` | 10 user; pemadaman VM tidak dilakukan oleh helper ini |
 
 Setelah tes selesai, Ctrl+C di terminal Locust, lalu jalankan helper lagi untuk
-tes berikutnya. Setiap proses helper membuat folder hasil baru. Jangan klik
-Start berkali-kali dalam proses yang sama karena file CSV per-request harus baru.
+tes berikutnya. Setiap klik Start membuat satu file CSV dengan nomor berikutnya,
+tanpa menimpa tes sebelumnya.
 
 Contoh spike:
 
@@ -99,38 +99,53 @@ Jika `.ps1` ditolak kebijakan PowerShell, gunakan Python langsung tanpa mengubah
 kebijakan keamanan Windows:
 
 ```powershell
-$stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
-$folder = Join-Path (Get-Location) "results\demo\$stamp"
-New-Item -ItemType Directory -Path $folder -Force | Out-Null
 $env:SCENARIO = 'stable'
 $env:DURATION = '60'
-$env:REQUEST_CSV = Join-Path $folder 'client.csv'
+$env:REQUEST_CSV = $null
+$env:SINGLE_CSV_DIR = Join-Path (Get-Location) 'results'
+$env:LB_ALGORITHM = 'sufferage'
 $env:RUN_SEED = '1001'
-.\.venv\Scripts\python.exe -m locust -f windows\locustfile.py --host http://192.168.56.10 --web-host 127.0.0.1 --web-port 8089 --stop-timeout 8 --csv (Join-Path $folder 'locust')
+.\.venv\Scripts\python.exe -m locust -f windows\locustfile.py --host http://192.168.56.10 --web-host 127.0.0.1 --web-port 8089 --stop-timeout 8
 ```
 
-## 6. Lihat file hasil di Windows
+## 6. Lihat satu CSV lengkap per pengujian
+
+Pada laptop demo, folder proyek berada di `E:\testsokarealworld`.
+Hasil baru disimpan langsung sebagai:
 
 ```text
-results/demo/<waktu>-stable-sufferage/
-├── client.csv             # setiap request dari Windows
-├── client.json            # durasi ukur dan konfigurasi
-├── client.started.json    # waktu mulai
-├── locust_stats.csv       # snapshot statistik berkala
-├── locust_stats_history.csv
-└── locust_failures.csv
+results/pengujian 1.csv
+results/pengujian 2.csv
+results/pengujian 3.csv
 ```
 
-Contoh kolom `client.csv`:
+Nomor mengikuti nomor terbesar yang sudah ada. File dibuat ketika Start diklik,
+bukan saat UI dibuka. Tidak ada JSON atau CSV statistik tambahan dari helper.
+CSV UTF-8 menyertakan satu header dan kolom `record_type`:
 
-```csv
-timestamp,scenario,request_id,backend,response_time_ms,status,error
-```
+| record_type | Isi |
+|---|---|
+| `config` | Skenario, algoritma, target, durasi rencana, pola user, seed, health awal |
+| `request` | Waktu UTC, detik sejak mulai, user aktif, request ID, backend, respons ms, ukuran, status, error |
+| `summary` | Durasi aktual, total/sukses/gagal, rata-rata, p95, request/detik, error %, hitungan per VM, std dev |
+| `backend_summary` | Total, sukses/gagal, rata-rata, p95, throughput dan error % untuk masing-masing VM |
 
-Itu merupakan hasil dari sisi klien. CSV statistik bawaan Locust bersifat
-periodik; log per-request dapat mencakup request terakhir yang belum ada dalam
-snapshot statistik. Benchmark sebelumnya menggunakan log per-request yang
-dicocokkan dengan LB.
+Buka dengan Excel atau filter `record_type = summary` untuk melihat hasil utama.
+P95 memakai nearest rank dari seluruh request (termasuk gagal). Throughput = jumlah
+request selesai / durasi aktual sampai tes berhenti, termasuk waktu penyelesaian
+request terakhir. Error mencakup HTTP gagal, koneksi/timeout, dan validasi body.
+Load imbalance adalah std dev populasi jumlah request ke empat VM; request tanpa
+backend dicatat terpisah sebagai `unassigned_requests`. Hitungan per VM mencakup
+request yang gagal setelah backend dipilih. Bobot kapasitas berbeda, sehingga
+std dev kecil sendiri belum membuktikan penjadwalan lebih baik.
+
+Baris request ditulis selama tes. Ringkasan ditambahkan saat tes selesai atau
+dihentikan dengan Stop/Ctrl+C. Jika proses dimatikan paksa, ringkasan mungkin belum
+ada. Pada skenario fault, waktu pemadaman manual tidak dideteksi oleh CSV ini.
+
+CSV Windows mengukur sisi klien; field internal LB seperti `queue_ms`,
+`upstream_ms`, dan estimasi kerja tetap tersedia di log vm210 di bawah ini.
+Runner benchmark historis pada `experiments/` tetap menggunakan format lamanya.
 
 ## 7. Lihat CSV Sufferage di vm210
 

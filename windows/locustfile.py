@@ -7,6 +7,7 @@ import csv
 import json
 import os
 import random
+import sys
 import time
 from pathlib import Path
 from locust import HttpUser, LoadTestShape, constant_pacing, events, task
@@ -17,13 +18,28 @@ REQUEST_CSV = os.environ.get('REQUEST_CSV')
 writer = None
 handle = None
 started = None
+report = None
+report_environment = None
+SINGLE_CSV_DIR = os.environ.get('SINGLE_CSV_DIR')
 
 
 @events.test_start.add_listener
 def open_log(environment, **kwargs):
-    global writer, handle, started
+    global writer, handle, started, report, report_environment
     started = time.perf_counter()
     random.seed(int(os.environ.get('RUN_SEED', '1001')))
+    if SINGLE_CSV_DIR:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from demo_report import SingleCsvReport
+        report_environment = environment
+        report = SingleCsvReport(
+            SINGLE_CSV_DIR, SCENARIO, DURATION,
+            int(os.environ.get('RUN_SEED', '1001')),
+            os.environ.get('LB_ALGORITHM', 'sufferage'),
+            os.environ.get('LB_INITIAL_HEALTH', ''),
+            environment.host or 'http://192.168.56.10')
+        print(f'File hasil pengujian: {report.path}', flush=True)
+        return
     if REQUEST_CSV:
         Path(REQUEST_CSV).parent.mkdir(parents=True, exist_ok=True)
         Path(REQUEST_CSV).with_suffix('.started.json').write_text(
@@ -40,6 +56,17 @@ def open_log(environment, **kwargs):
 @events.request.add_listener
 def request_log(request_type, name, response_time, response_length,
                 exception, context, response=None, **kwargs):
+    if SINGLE_CSV_DIR:
+        if report is not None:
+            headers = response.headers if response is not None else {}
+            runner = report_environment.runner
+            report.request(
+                request_type, name, (context or {}).get('request_id', ''),
+                headers.get('X-LB-Backend', 'none'), headers.get('X-LB-Algorithm', ''),
+                response_time, response_length,
+                response.status_code if response is not None else 0,
+                str(exception) if exception else '', runner.user_count if runner else 0)
+        return
     if writer:
         writer.writerow([time.time(), SCENARIO, context.get('request_id', ''),
                          response.headers.get('X-LB-Backend', 'none') if response is not None else 'none',
@@ -49,8 +76,15 @@ def request_log(request_type, name, response_time, response_length,
 
 @events.test_stop.add_listener
 def close_log(environment, **kwargs):
+    global writer, handle
+    if SINGLE_CSV_DIR:
+        if report is not None:
+            report.finish()
+        return
     if handle:
         handle.close()
+        handle = None
+        writer = None
     if REQUEST_CSV and started is not None:
         Path(REQUEST_CSV).with_suffix('.json').write_text(json.dumps({
             'scenario': SCENARIO, 'duration_seconds': time.perf_counter() - started,

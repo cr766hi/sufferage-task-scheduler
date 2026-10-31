@@ -89,7 +89,7 @@ disalin ke folder backend; lokasi asalnya tercatat dalam [inventory](backends/in
 - **Status saat ini:** endpoint `/__lb/health` menampilkan antrean, kesehatan,
   jumlah request upstream aktif, dan bobot backend.
 - **Grafik pengujian:** Locust Web UI pada port **8089 Windows**.
-- **CSV klien:** `results/demo/<waktu>-<skenario>-sufferage/client.csv` pada Windows.
+- **CSV klien:** `results/pengujian 1.csv`, `pengujian 2.csv`, dan seterusnya pada Windows.
 - **CSV penjadwalan:** `/var/log/sufferage-lb/run-<waktu>-<acak>/requests.csv` pada vm210.
 
 Contoh dan penjelasan setiap kolom ada di [panduan demo](docs/DEMO.md).
