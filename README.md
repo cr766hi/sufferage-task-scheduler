@@ -229,3 +229,10 @@ Sufferage untuk menghubungkan pembagian beban dengan keputusan algoritma. Terang
 bahwa CPU persen dinormalisasi terhadap seluruh vCPU, data hilang bukan nol, dan
 perbandingan uji harus memakai dataset/ETC serta kondisi VM yang sama. Grafik ini
 tidak membuktikan keunggulan terhadap algoritma lain. Refresh setelah tes baru.
+
+## Laporan kelompok dalam Word
+
+[Unduh laporan singkat kelompok](docs/Laporan_Task_Scheduler_Sufferage.docx).
+Laporan 7 halaman memuat anggota dan NRP, arsitektur, langkah Sufferage, hasil
+pengujian 240 task, 9 gambar/grafik, dan cara demo termasuk SSH ke VM210.
+Grafik hasil diambil dari halaman HTML pengujian.

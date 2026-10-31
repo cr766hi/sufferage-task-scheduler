@@ -94,3 +94,11 @@ waktu eksekusi tetap tersedia untuk memeriksa keputusan algoritma. Kurva Suffera
 bisa naik/turun karena ready time diperbarui setiap keputusan. Grafik resource
 menampilkan pengukuran guest dan tidak menganggap sampel hilang sebagai nol.
 Cara membuat ulang HTML dan urutan penjelasan demo ada pada [DEMO.md](DEMO.md).
+
+## Laporan singkat kelompok
+
+[Laporan Word kelompok](Laporan_Task_Scheduler_Sufferage.docx) menyajikan
+ringkasan 7 halaman dengan 9 gambar/grafik. Laporan ini membahas batch 240 task
+`batch-20261031T123432Z-28cd6a`, calibration ID `etc-0621511b`, dengan 240 task
+selesai, makespan 31,24 detik, dan throughput 7,68 task/detik. Ini sesi yang berbeda
+dari catatan pengulangan 120 task di atas. Grafik merupakan screenshot HTML hasil.
