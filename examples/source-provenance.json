@@ -99,13 +99,13 @@
     "host": "192.168.56.10",
     "repo_file": "vm210/scheduler.py",
     "deployed_file": "/opt/sufferage-scheduler/scheduler.py",
-    "sha256_lf": "bc0cb198758ac194dc8758619746a62e70d6b1e6113a6e653d462b0e7467d60d"
+    "sha256_lf": "fdd68dc282dddbd799b84cb50261db6249bc12b5a9ff46e7d7d080739925989b"
   },
   {
     "host": "192.168.56.10",
     "repo_file": "vm210/sufferage.py",
     "deployed_file": "/opt/sufferage-scheduler/sufferage.py",
-    "sha256_lf": "92fece782f623e81734288fce4039e4b6a80f7186a06afb623c1a310082f0891"
+    "sha256_lf": "42ffa7b0dbeed94077f5bb7654a44db08b88f1feb63f18da06bc074d70d9cd94"
   },
   {
     "host": "192.168.56.10",
@@ -117,7 +117,7 @@
     "host": "192.168.56.10",
     "repo_file": "monitoring/resource_stats.py",
     "deployed_file": "/opt/sufferage-scheduler/resource_stats.py",
-    "sha256_lf": "acf6e9cefda28001afdca02680e4f995d6070141f3c2be0ae21d5d6e715c24d8"
+    "sha256_lf": "1b58c3314505fbe66d5809a28c501fcc0d0cec5c5cbf2e601201019799e7fb37"
   },
   {
     "host": "192.168.56.10",

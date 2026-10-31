@@ -1,89 +1,81 @@
-# Laporan verifikasi task scheduling Sufferage
+# Laporan revisi ETC v2 dan efisiensi Sufferage
 
-## Ruang lingkup revisi
+## Perubahan aktif
 
-Implementasi aktif adalah scheduler batch statis, bukan eksperimen trafik web.
-Windows mengirim dataset 40 task independen: 20 light, 12 medium, 8 heavy (seed 42).
-vm210 membuat rencana Sufferage lengkap dari matriks ETC terukur, kemudian
-mengeksekusi empat antrean worker secara paralel. Di dalam satu worker task logis
-tidak tumpang tindih. Worker dua vCPU memakai dua proses untuk satu task.
-Layanan lama sufferage-lb telah dihentikan dan dinonaktifkan dari runlevel default.
-Layanan baru task-scheduler aktif dan autostart; hostname/IP/cluster tetap sama.
+1. ETC v2 memakai median **7 sampel RPC** per jenis task dan worker, diukur pada
+   monotonic clock scheduler. Warmup mencakup seluruh jenis task; urutan campuran
+   berotasi dan monitoring resource aktif selama kalibrasi. Biaya transport masuk
+   estimasi, sesuai definisi execution_ms pada hasil batch.
+2. Planner mengelompokkan task dengan baris ETC identik. Keputusan tetap Sufferage
+   yang sama: max selisih CT terbaik/kedua, dengan tie-break urutan dataset/worker.
+   Differential test hingga 500 task memastikan seluruh alokasi dan CT identik
+   dengan perhitungan lengkap. Optimasi mengurangi kerja planning di vm210.
+3. CSV/HTML menambah MAPE prediksi, total unit kerja, waktu selesai worker, jeda
+   akhir, versi ETC dan timeline task nyata. CPU/RAM tetap hasil ukur, tanpa kuota
+   pemerataan atau angka yang dipaksakan.
 
-## Hasil tiga pengulangan nyata
+## Hasil normal pada dataset 120 task
 
-Dataset dan calibration ID sama pada semua run di bawah. Kalibrasi dilakukan
-sebelum batch pertama; dua pengulangan memakai --reuse-calibration. Semua hasil
-berasal dari VM sebenarnya, bukan angka ilustrasi. Hasil HTTP lama tidak dipakai.
+Dataset sama: 60 light, 36 medium, 24 heavy, seed 42. Seluruh run v2 normal di
+bawah memakai calibration ID yang sama; kalibrasi berada di luar makespan.
 
-| Ulang | Task selesai | Gagal/skipped | Makespan s | Rata-rata waiting ms | Rata-rata turnaround ms | Throughput task/s |
-|---|---:|---:|---:|---:|---:|---:|
-| 1 | 40/40 | 0/0 | 5.416 | 2912.41 | 3300.74 | 7.39 |
-| 2 | 40/40 | 0/0 | 5.080 | 2626.89 | 3052.20 | 7.87 |
-| 3 | 40/40 | 0/0 | 4.947 | 2396.32 | 2786.94 | 8.09 |
+| Ulang | Selesai | Makespan s | Planning ms | MAPE execution % | Selisih selesai worker s |
+|---|---:|---:|---:|---:|---:|
+| 1 | 120/120 | 14.271 | 70.65 | 29.46 | 1.411 |
+| 2 | 120/120 | 13.172 | 29.03 | 29.09 | 1.366 |
+| 3 | 120/120 | 14.196 | 114.40 | 31.37 | 0.885 |
 
-Rata-rata makespan tiga run: **5.147 s**. Semua 120 eksekusi task selesai sukses.
+Jumlah run normal: **3**, seluruh **360 task** berhasil.
+Rata-rata makespan **13.880 s**, planning **71.36 ms**,
+MAPE **29.97%**, dan selisih selesai worker **1.221 s**.
 
-| Worker | Task dialokasikan per run |
-|---|---:|
-| vm101 | 12 |
-| vm102 | 9 |
-| vm201 | 9 |
-| vm202 | 10 |
+## Pembanding catatan v1
 
-Alokasi sama pada ketiga run karena dataset, ETC dan tie-break sama; waktu aktual
-berbeda karena overhead dan kontensi emulasi. Jumlah alokasi bukan kuota pemerataan.
-Task berbeda ukuran, sehingga jumlah task sama tidak berarti beban CPU sama.
+Ini perbandingan observasional pada laptop yang sama, bukan eksperimen A/B
+terkontrol: satu catatan v1 dibanding beberapa run v2 pada waktu berbeda.
+Kontensi dan kondisi setelah reboot dapat berbeda, sehingga angka tidak cukup
+untuk mengklaim peningkatan yang selalu terjadi.
 
-## Matriks ETC yang dipakai
-
-Median dua waktu eksekusi worker setelah warmup, dalam ms. Worker dikalibrasi
-bersamaan sehingga estimasi mencerminkan kondisi kontensi saat pengukuran.
-
-| Jenis | vm101 | vm102 | vm201 | vm202 |
+| Versi | Makespan s | Planning ms | MAPE execution % | Selisih selesai worker s |
 |---|---:|---:|---:|---:|
-| light | 136.44 | 105.62 | 116.23 | 90.53 |
-| medium | 220.24 | 179.32 | 170.88 | 163.09 |
-| heavy | 823.50 | 217.16 | 685.15 | 264.20 |
+| v1 (pengujian 1.csv) | 17.642 | 2944.77 | 58.11 | 5.116 |
+| v2 rata-rata run normal | 13.880 | 71.36 | 29.97 | 1.221 |
 
-Predicted makespan dari ETC sekitar 1,64 s, sedangkan aktual sekitar 5 s. Prediksi
-belum memasukkan seluruh biaya RPC, planning, monitoring, dan perubahan kontensi.
-Perbedaan tersebut dilaporkan; estimasi tidak disamakan dengan hasil pengukuran.
+MAPE = rata-rata `abs(execution_ms - ETC) / execution_ms × 100%`, hanya task sukses.
+Execution mencakup RPC, bukan CPU time murni. Jeda akhir worker yang lebih kecil
+menunjukkan antrean berakhir lebih berdekatan pada pengukuran tersebut; ini tidak
+menjamin utilisasi CPU sama atau jadwal optimal.
 
-## Resource guest: cakupan pengukuran
+## Gangguan yang tidak disembunyikan
 
-Setiap run singkat ini menghasilkan dua snapshot berhasil per VM, sehingga hanya
-satu interval CPU valid per VM per run. CPU di bawah menggabungkan tiga interval
-secara berbobot ticks; puncak adalah maksimum interval, bukan puncak instan seluruh
-batch. RAM adalah rata-rata snapshot valid. Untuk resource yang lebih representatif,
-gunakan dataset demo120.csv atau dataset lebih besar dan ulangi pengujian.
+Pengulangan lain terputus ketika vm101 dan vm102 kehilangan konektivitas.
+Task mengembalikan `TimeoutError:` dan resource kedua worker juga gagal diambil.
+Diagnostik sesudahnya menemukan host pve1 baru reboot (uptime sekitar dua menit)
+dan kedua guest stopped. Agent tidak menjalankan shutdown/restart host. Penyebab
+reboot belum ditetapkan; tidak ada perubahan cluster, IP, bridge atau HA.
 
-| VM | CPU rata-rata % | CPU puncak % | RAM rata-rata % | Interval CPU valid total |
-|---|---:|---:|---:|---:|
-| vm101 | 40.03 | 46.08 | 19.27 | 3 |
-| vm102 | 33.00 | 37.43 | 22.43 | 3 |
-| vm201 | 46.38 | 50.76 | 19.52 | 3 |
-| vm202 | 26.32 | 29.89 | 22.45 | 3 |
-| vm210 | 71.26 | 75.00 | 19.56 | 3 |
+Batch `batch-20261031T052431Z-114d74`: 69 task sukses, 2 failed, 49 skipped, durasi terminasi 61.609 s.
 
-## Bukti dan keterbatasan
+Hasil tersebut tetap berada di CSV/HTML dengan status completed_with_errors.
+Run terganggu ini tidak dimasukkan ke rata-rata run normal, dan tidak disebut
+berhasil. Guest yang stopped dinyalakan kembali; host tidak dimatikan.
 
-- Empat tes kode lulus: pemilihan global Sufferage terbesar, reservasi CT, validasi
-  task/reset resource, dan integrasi batch termasuk metrik serta penyimpanan/resume.
-- Uji nyata memverifikasi waiting + execution = turnaround, CT kedua − CT terbaik
-  = Sufferage, serta antrean per worker tanpa tumpang tindih.
-- 23 file terpasang worker/scheduler cocok dengan sumber repo (normalisasi LF).
-  Rincian ada pada [source-provenance.json](../examples/source-provenance.json).
-- Semua resource guest teramati; timeout/error tetap dicatat, tidak dijadikan nol.
-- Dataset 40 task adalah dataset sintetis CPU dengan urutan tetap, bukan dataset
-  publik atau replay trafik pengguna. Pekerjaan CPU benar-benar dikerjakan worker.
-- Tidak ada pembandingan dengan algoritma lain untuk versi batch ini, sehingga
-  hasil tidak membuktikan Sufferage paling optimal. Fault/rescheduling bukan bagian
-  evaluasi ini; worker gagal menghasilkan task failed/skipped secara eksplisit.
-- Seluruh host/guest berjalan pada satu laptop dengan nested emulation. Waktu
-  start/finish diukur dari monotonic clock scheduler yang sama, bukan gabungan
-  jam dinding worker. Kalibrasi berada di luar makespan.
+Run normal ketiga dilakukan setelah pve1 pulih dan seluruh jenis task di-warmup kembali. ETC tetap sama, tetapi kondisi setelah reboot bukan kondisi eksperimen yang sepenuhnya identik.
 
-CSV mentah tersimpan lokal di results/pengujian 5.csv, 6.csv dan 7.csv. Repo memuat
-kode, dataset, definisi metrik dan laporan ringkas; tidak memuat password atau token.
-Cara demo langsung, termasuk SSH: [DEMO.md](DEMO.md).
+## Batasan yang tetap berlaku
+
+- CV sampel kalibrasi tertinggi pada sesi ini **39.58%**; variasi emulasi
+  masih nyata. Median tujuh sampel meningkatkan ketahanan terhadap sebagian
+  outlier, bukan jaminan ETC tepat pada setiap task.
+- Predicted makespan tetap bisa berbeda dari aktual. Versi ini menambahkan
+  execution_phase_seconds dan predicted_batch_makespan_seconds agar biaya awal
+  planning/persiapan tidak tercampur dengan prediksi antrean virtual.
+- CPU persen dinormalisasi terhadap seluruh vCPU guest. Task lebih sedikit bisa
+  mempunyai lebih banyak unit kerja. Tidak ada target memaksa semua CPU sama.
+- Resource disampel tiap dua detik, puncak adalah puncak interval/snapshot teramati.
+- Sufferage adalah heuristik; belum ada pembuktian optimalitas atau perbandingan
+  algoritma lain pada evaluasi ini. Tidak ada retry/rescheduling tersembunyi.
+- Enam tes otomatis lolos: validasi task, reservasi CT, eksekusi/hasil/resume,
+  reset resource, tujuh sampel RPC, serta ekuivalensi planner termasuk tie.
+
+Cara demo dan SSH: [DEMO.md](DEMO.md). Rumus algoritma: [SUFFERAGE.md](SUFFERAGE.md).

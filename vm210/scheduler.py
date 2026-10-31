@@ -66,12 +66,24 @@ def batch_summary(batch):
     waiting = [task['waiting_ms'] for task in done]
     turnaround = sorted(task['turnaround_ms'] for task in done)
     counts = [sum(task['worker'] == worker['name'] for task in batch['tasks']) for worker in batch['workers']]
+    errors = [100 * abs(task['execution_ms'] - task['etc_ms']) / task['execution_ms']
+              for task in done if task['execution_ms'] > 0]
+    finishes = [max((task['finish_ms'] for task in done if task['worker'] == worker['name']), default=None)
+                for worker in batch['workers']]
+    finishes = [finish for finish in finishes if finish is not None]
+
     return dict(total_tasks=len(batch['tasks']), completed_tasks=len(done),
         failed_tasks=sum(task['status'] == 'failed' for task in batch['tasks']),
         skipped_tasks=sum(task['status'] == 'skipped' for task in batch['tasks']),
         success_rate_percent=100 * len(done) / len(batch['tasks']),
         makespan_seconds=makespan_ms / 1000, planning_ms=batch['planning_ms'],
         predicted_makespan_seconds=max(task['predicted_finish_ms'] for task in batch['tasks']) / 1000,
+        execution_start_ms=batch.get('execution_start_ms', 0),
+        execution_phase_seconds=(makespan_ms - batch.get('execution_start_ms', 0)) / 1000,
+        predicted_batch_makespan_seconds=(batch.get('execution_start_ms', 0) + max(task['predicted_finish_ms'] for task in batch['tasks'])) / 1000,
+        execution_prediction_mape_percent=statistics.mean(errors) if errors else None,
+        worker_finish_spread_seconds=(max(finishes) - min(finishes)) / 1000 if finishes else None,
+
         avg_waiting_ms=statistics.mean(waiting) if waiting else None,
         avg_turnaround_ms=statistics.mean(turnaround) if turnaround else None,
         p95_turnaround_ms=turnaround[math.ceil(.95 * len(turnaround)) - 1] if turnaround else None,
@@ -115,7 +127,8 @@ class Scheduler:
         workers = await asyncio.gather(*(self.worker_health(worker) for worker in self.workers))
         return web.json_response(dict(role='task_scheduler', algorithm='sufferage',
             scheduling='offline_batch', active_batch=self.active,
-            calibrated=self.calibration is not None, workers=workers))
+            calibrated=self.calibration is not None,
+            calibration_version=self.calibration.get('version','worker-elapsed-median2-v1') if self.calibration else None, workers=workers))
 
     async def metrics(self, request):
         return web.json_response(snapshot('vm210'))
@@ -139,22 +152,54 @@ class Scheduler:
             health = await asyncio.gather(*(self.worker_health(worker) for worker in self.workers))
             if not all(worker['healthy'] for worker in health):
                 return web.json_response({'error':'Workers not ready','workers':health}, status=503)
-            async def measure(worker):
-                # Warm up process creation outside measured samples and outside the batch.
-                await self.worker_task(worker, 'light')
-                values = {}
-                for kind in self.profiles['tasks']:
-                    samples = [await self.worker_task(worker, kind) for _ in range(2)]
-                    values[kind] = max(.001, statistics.median(sample['worker_elapsed_ms'] for sample in samples))
-                return worker['name'], values
+            kinds = list(self.profiles['tasks'])
+            samples_per_cell = 7
+            async def measure(worker, offset):
+                # Warm every kind, including child process startup, outside measured samples.
+                for kind in kinds:
+                    await self.worker_task(worker, kind)
+                values = {kind: [] for kind in kinds}
+                worker_values = {kind: [] for kind in kinds}
+                for repeat in range(samples_per_cell):
+                    # Staggered mixed order better resembles the actual concurrent queues.
+                    order = kinds[(offset + repeat) % len(kinds):] + kinds[:(offset + repeat) % len(kinds)]
+                    for kind in order:
+                        started = time.monotonic()
+                        result = await self.worker_task(worker, kind)
+                        elapsed_ms = (time.monotonic() - started) * 1000
+                        values[kind].append(max(.001, elapsed_ms))
+                        worker_values[kind].append(result['worker_elapsed_ms'])
+                return worker['name'], values, worker_values
+            calibration_resources = {'resources': []}
+            previous = {}
+            calibration_started = time.monotonic()
+            stopped = asyncio.Event()
+            monitoring = None
             try:
-                measured = await asyncio.gather(*(measure(worker) for worker in self.workers))
-            except Exception as error:
-                return web.json_response({'error':type(error).__name__ + ': ' + str(error)}, status=502)
-            matrix = {kind: {name: values[kind] for name, values in measured} for kind in self.profiles['tasks']}
+                await self.collect(calibration_resources, previous, calibration_started)
+                monitoring = asyncio.create_task(self.monitor(calibration_resources, previous, calibration_started, stopped))
+                measured = await asyncio.gather(*(measure(worker, index) for index, worker in enumerate(self.workers)), return_exceptions=True)
+                failures = [value for value in measured if isinstance(value, BaseException)]
+                if failures:
+                    error = failures[0]
+                    return web.json_response({'error':type(error).__name__ + ': ' + str(error)}, status=502)
+            finally:
+                stopped.set()
+                if monitoring:
+                    await monitoring
+            matrix = {kind: {name: statistics.median(values[kind]) for name, values, _ in measured} for kind in kinds}
+            details = {kind: {name: {
+                'rpc_samples_ms': values[kind],
+                'worker_samples_ms': worker_values[kind],
+                'rpc_median_ms': statistics.median(values[kind]),
+                'rpc_p90_ms': sorted(values[kind])[math.ceil(.9 * samples_per_cell) - 1],
+                'rpc_cv_percent': 100 * statistics.pstdev(values[kind]) / statistics.mean(values[kind])
+            } for name, values, worker_values in measured} for kind in kinds}
             self.calibration = dict(id='etc-' + uuid.uuid4().hex[:8], timestamp_utc=utc(),
-                method='median of 2 worker_elapsed_ms samples after warmup; workers calibrated concurrently',
-                etc_ms=matrix)
+                version='rpc-median7-v2', samples_per_cell=samples_per_cell,
+                duration_seconds=time.monotonic() - calibration_started,
+                method='median of 7 scheduler-observed RPC elapsed_ms per task type/worker; all types warmed; staggered mixed order; concurrent workers and resource polling',
+                sample_details=details, etc_ms=matrix)
             print(json.dumps({'event':'calibrated', **self.calibration}), flush=True)
             return web.json_response(self.calibration)
 
@@ -240,6 +285,7 @@ class Scheduler:
             try:
                 previous = {}
                 await self.collect(batch, previous, admitted)
+                batch['execution_start_ms'] = (time.monotonic() - admitted) * 1000
                 monitoring = asyncio.create_task(self.monitor(batch, previous, admitted, stopped))
                 async def execute_queue(worker):
                     unavailable = False

@@ -6,9 +6,10 @@ Kode utama: [vm210/sufferage.py](../vm210/sufferage.py), fungsi `sufferage_plan(
 
 Task independen, semua datang bersamaan (arrival = 0), tidak dipreempt atau
 dimigrasikan. Dataset tetap berisi Task ID dan jenis/ukuran pekerjaan. Matriks
-ETC mengestimasi durasi eksekusi task pada setiap worker. ETC memakai median dua
-`worker_elapsed_ms` setelah warmup; empat worker dikalibrasi bersamaan sebelum
-batch. Kontensi nested emulation tetap memengaruhi estimasi.
+ETC mengestimasi durasi eksekusi task pada setiap worker. ETC v2 memakai median tujuh durasi RPC yang diukur oleh vm210 per jenis task
+dan worker. Durasi RPC mencakup transport yang juga ada dalam eksekusi aktual.
+Seluruh jenis di-warmup, urutan pengukuran campuran berotasi, empat worker
+dikalibrasi bersamaan, dan monitoring resource tetap aktif seperti saat batch. Kontensi nested emulation tetap memengaruhi estimasi.
 
 ## Langkah Sufferage
 
@@ -66,3 +67,16 @@ Default demo sekarang 120 task. Dataset 240 dan 500 task memakai proporsi yang s
 (50% ringan, 30% sedang, 20% berat), seed 42, tanpa mengubah biaya CPU tiap jenis.
 Dataset 40 task tetap merupakan sumber verifikasi tiga run pada laporan sebelumnya.
 Lihat [katalog dataset](../datasets/README.md).
+
+## Kualitas ETC dan efisiensi planning
+
+Versi aktif `rpc-median7-v2` menyimpan tujuh sampel RPC per jenis/worker beserta
+median, p90 dan CV. Median tahan terhadap sebagian outlier, tetapi kontensi laptop
+tetap dapat mengubah waktu aktual. Tabel hasil menampilkan MAPE prediksi eksekusi,
+unit kerja, waktu selesai dan jeda akhir tiap worker. Resource tidak dipaksa sama.
+
+Planner mengelompokkan task dengan baris ETC identik (jenis sama). Hanya task
+paling awal dari tiap jenis yang perlu dievaluasi pada setiap langkah karena
+nilai Sufferage-nya identik. Tes differential memastikan seluruh alokasi, CT dan
+tie-break sama dengan perhitungan semua task, hingga batch 500 task. Ini optimasi
+perhitungan, bukan perubahan algoritma penjadwalan.

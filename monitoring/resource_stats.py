@@ -29,5 +29,6 @@ def summarize_resources(samples):
             ram_avg_percent=statistics.mean(sample['ram_percent'] for sample in valid) if valid else None,
             ram_peak_percent=max((sample['ram_percent'] for sample in valid), default=None),
             ram_peak_used_mb=max((sample['ram_used_mb'] for sample in valid), default=None),
-            ram_total_mb=valid[-1]['ram_total_mb'] if valid else None))
+            ram_total_mb=valid[-1]['ram_total_mb'] if valid else None,
+            vcpus=valid[-1].get('vcpus') if valid else None))
     return summaries

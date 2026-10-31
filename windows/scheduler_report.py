@@ -19,13 +19,16 @@ def save_result(root, batch):
             return path
     base = dict(batch_id=batch['batch_id'], algorithm='sufferage', scheduling='offline_batch',
                 dataset_name=batch['dataset_name'], dataset_sha256=batch['dataset_sha256'],
-                admitted_at_utc=batch['admitted_at_utc'], batch_status=batch['status'])
+                admitted_at_utc=batch['admitted_at_utc'], batch_status=batch['status'],
+                calibration_version=batch['calibration'].get('version','worker-elapsed-median2-v1'),
+                calibration_id=batch['calibration']['id'], etc_samples_per_cell=batch['calibration'].get('samples_per_cell',2))
     rows = [dict(record_type='config', **base)]
     for kind, values in batch['calibration']['etc_ms'].items():
         for worker, value in values.items():
             rows.append(dict(record_type='etc_calibration', task_type=kind, worker=worker,
                 etc_ms=value, calibration_id=batch['calibration']['id'],
-                calibration_method=batch['calibration']['method']))
+                calibration_method=batch['calibration']['method'],
+                sample_details=json.dumps(batch['calibration'].get('sample_details',{}).get(kind,{}).get(worker,{}))))
     for task in batch['tasks']:
         rows.append(dict(record_type='task', **{key:value for key,value in task.items() if key != 'candidate_ct_ms'},
             **{'ct_' + worker + '_ms': value for worker,value in task['candidate_ct_ms'].items()}))
@@ -33,9 +36,17 @@ def save_result(root, batch):
     for worker in batch['workers']:
         assigned = [task for task in batch['tasks'] if task['worker'] == worker['name']]
         done = [task for task in assigned if task['status'] == 'completed']
+        finishes = [task['finish_ms'] for task in done]
+        starts = [task['start_ms'] for task in done]
+        errors = [100 * abs(task['execution_ms'] - task['etc_ms']) / task['execution_ms'] for task in done if task['execution_ms'] > 0]
         rows.append(dict(record_type='worker_summary', worker=worker['name'], capacity=worker['capacity'],
             assigned_tasks=len(assigned), completed_tasks=len(done),
-            observed_execution_ms=sum(task['execution_ms'] for task in done)))
+            observed_execution_ms=sum(task['execution_ms'] for task in done),
+            total_work_units=sum(task['units'] for task in assigned),
+            first_start_ms=min(starts) if starts else None, last_finish_ms=max(finishes) if finishes else None,
+            idle_tail_ms=batch['makespan_ms'] - max(finishes) if finishes else None,
+            estimated_queue_ms=sum(task['etc_ms'] for task in assigned),
+            execution_prediction_mape_percent=statistics.mean(errors) if errors else None))
     for kind in ('light','medium','heavy'):
         done = [task for task in batch['tasks'] if task['task_type'] == kind and task['status'] == 'completed']
         rows.append(dict(record_type='task_type_summary', task_type=kind, completed_tasks=len(done),
@@ -67,7 +78,27 @@ def fmt(value, digits=2):
 
 
 def table(headers, rows):
-    return '<div class="scroll"><table><thead><tr>' + ''.join('<th>'+escape(header)+'</th>' for header in headers) + '</tr></thead><tbody>' + ''.join('<tr>'+''.join('<td>'+escape(str(value))+'</td>' for value in row)+'</tr>' for row in rows) + '</tbody></table></div>'
+    return '<div class="scroll"><table><thead><tr>' + ''.join('<th>'+escape(header)+'</th>' for header in headers) + '</tr></thead><tbody>' + ''.join('<tr>'+''.join('<td class="bad">'+escape(str(value))+'</td>' if str(value) in ('failed','skipped','completed_with_errors') else '<td>'+escape(str(value))+'</td>' for value in row)+'</tr>' for row in rows) + '</tbody></table></div>'
+
+
+def timeline(rows, makespan_seconds):
+    tasks = [row for row in rows if row['record_type'] == 'task' and row.get('status') == 'completed']
+    if not tasks or makespan_seconds <= 0:
+        return '<p>Belum ada eksekusi task selesai.</p>'
+    colors = {'light':'#5194cb','medium':'#d79834','heavy':'#b85b74'}
+    parts = ['<p class="legend">Ringan <b style="color:#5194cb">■</b> · Sedang <b style="color:#d79834">■</b> · Berat <b style="color:#b85b74">■</b>. Arah waktu: 0 sampai '+fmt(makespan_seconds)+' detik.</p>']
+    for worker in sorted({row['worker'] for row in tasks}):
+        bars = []
+        for row in tasks:
+            if row['worker'] != worker:
+                continue
+            start, finish = float(row['start_ms']), float(row['finish_ms'])
+            left = 100 * start / (makespan_seconds * 1000)
+            width = 100 * (finish - start) / (makespan_seconds * 1000)
+            title = escape(f"{row['task_id']} · {row['task_type']} · {start:.1f}–{finish:.1f} ms", quote=True)
+            bars.append(f'<span class="bar" title="{title}" style="left:{left:.5f}%;width:{width:.5f}%;background:{colors[row["task_type"]]}"></span>')
+        parts.append('<div class="lane"><strong>'+escape(worker)+'</strong><div class="track">'+''.join(bars)+'</div></div>')
+    return ''.join(parts)
 
 
 def generate_report(root):
@@ -80,8 +111,17 @@ def generate_report(root):
         if summary:
             runs.append((int(path.stem.split()[-1]), path, summary, rows))
     runs.sort()
-    comparison, resources, workers, kinds = [], [], [], []
+    comparison, resources, workers, kinds, quality = [], [], [], [], []
     for number,path,summary,rows in runs:
+        task_rows = [row for row in rows if row['record_type'] == 'task' and row.get('status') == 'completed']
+        errors = [100 * abs(float(row['execution_ms']) - float(row['etc_ms'])) / float(row['execution_ms'])
+                  for row in task_rows if float(row['execution_ms']) > 0]
+        observed_finishes = [max(float(row['finish_ms']) for row in task_rows if row['worker'] == worker)
+                            for worker in {row['worker'] for row in task_rows}]
+        spread = (max(observed_finishes) - min(observed_finishes)) / 1000 if observed_finishes else None
+        quality.append([f'Pengujian {number}',summary.get('calibration_version') or 'worker-elapsed-median2-v1',
+            fmt(summary.get('planning_ms')), fmt(statistics.mean(errors) if errors else None),
+            fmt(spread), summary.get('calibration_id') or 'tersimpan pada baris ETC'])
         comparison.append([f'Pengujian {number}', summary['dataset_name'], summary['batch_status'],
             summary.get('total_tasks',''), summary.get('completed_tasks',''),
             fmt(summary.get('makespan_seconds')), fmt(summary.get('avg_waiting_ms')),
@@ -93,8 +133,13 @@ def generate_report(root):
                     row['resource_ok_samples']+'/'+row['resource_error_samples'],
                     row['cpu_valid_samples'],fmt(row['resource_observed_seconds'])])
             if row['record_type'] == 'worker_summary':
+                vm_tasks = [task for task in task_rows if task['worker'] == row['worker']]
+                last_finish = max((float(task['finish_ms']) for task in vm_tasks), default=None)
+                idle_tail = float(summary['makespan_seconds']) - last_finish / 1000 if last_finish is not None else None
+                units = sum(int(task['units']) for task in rows if task['record_type'] == 'task' and task['worker'] == row['worker'])
                 workers.append([f'Pengujian {number}',row['worker'],row['capacity'],
-                    row['assigned_tasks'],row['completed_tasks'],fmt(row['observed_execution_ms'])])
+                    row['assigned_tasks'],units,fmt(row['observed_execution_ms']),
+                    fmt(last_finish / 1000 if last_finish is not None else None),fmt(idle_tail)])
             if row['record_type'] == 'task_type_summary':
                 kinds.append([f'Pengujian {number}',row['task_type'],row['completed_tasks'],
                     fmt(row['avg_waiting_ms']),fmt(row['avg_turnaround_ms'])])
@@ -112,24 +157,28 @@ def generate_report(root):
             if row['record_type'] == 'etc_calibration':
                 etc.append([row['task_type'],row['worker'],fmt(row['etc_ms'])])
     sections = [
+        ('Timeline eksekusi · batch terakhir', 'Setiap balok adalah satu task yang benar-benar dieksekusi. Ruang kosong di awal mencakup planning/persiapan; ruang kosong setelah task terakhir adalah jeda akhir worker. Arahkan pointer ke balok untuk melihat Task ID.',
+         timeline(latest[3], float(latest[2].get('makespan_seconds') or 0)) if latest else '<p>Belum ada batch.</p>'),
         ('Perbandingan hasil batch', 'Seluruh task datang bersamaan. Metrik utama adalah waktu penyelesaian batch dan waktu tunggu task.',
          table(['Pengujian','Dataset','Status','Task','Selesai','Makespan (s)','Rata-rata tunggu (ms)','Rata-rata turnaround (ms)','Throughput (task/s)'], comparison)),
         ('Ringkasan jenis task', 'Light / medium / heavy benar-benar mengerjakan perhitungan CPU dengan rasio kerja 1:4:12.',
          table(['Pengujian','Jenis','Selesai','Rata-rata tunggu (ms)','Rata-rata turnaround (ms)'], kinds)),
         ('Alokasi ke VM worker', 'Setiap VM menjalankan satu task logis pada satu waktu; task di VM dua vCPU dibagi ke dua proses CPU.',
-         table(['Pengujian','Worker','vCPU','Dialokasikan','Selesai','Jumlah durasi eksekusi RPC (ms)'], workers)),
+         table(['Pengujian','Worker','vCPU','Task','Unit kerja','Jumlah eksekusi RPC (ms)','Terakhir selesai (s)','Jeda akhir (s)'], workers)),
+        ('Kualitas estimasi ETC dan planning', 'MAPE adalah rata-rata |durasi RPC aktual − ETC| / durasi RPC aktual × 100%. Jarak selesai worker menunjukkan seberapa jauh antrean berakhir bersamaan. Bandingkan dataset yang sama; ETC v1 dan v2 memakai basis berbeda.',
+         table(['Pengujian','Versi ETC','Planning (ms)','MAPE eksekusi %','Selisih selesai worker (s)','Calibration ID'], quality)),
         ('Resource utilization guest', 'CPU/RAM tiap VM, termasuk scheduler vm210. Sampel setiap 2 detik; data hilang tidak dianggap 0%.',
          table(['Pengujian','VM','CPU rata-rata %','CPU puncak %','RAM rata-rata %','RAM puncak %','Sampel OK/gagal','Interval CPU valid','CPU teramati (s)'], resources)),
         ('Jejak Sufferage · batch terakhir', 'CT = ready time worker + ETC task pada worker tersebut. Sufferage = CT terbaik kedua − CT terbaik; ready time diperbarui setelah setiap alokasi.',
          '<details><summary>Lihat seluruh urutan alokasi dan CT kandidat</summary>'+table(['Urutan','Task','Jenis','CT vm101 (ms)','CT vm102 (ms)','CT vm201 (ms)','CT vm202 (ms)','Sufferage (ms)','Worker pilihan'], trace)+'</details>'),
         ('Waktu eksekusi task · batch terakhir', 'Waktu relatif terhadap penerimaan batch pada scheduler. Durasi eksekusi RPC mencakup perjalanan scheduler–worker; CPU time worker terpisah dalam CSV.',
          '<details><summary>Lihat start, finish, waiting, execution, turnaround</summary>'+table(['Task','Jenis','Worker','Status','Start (ms)','Finish (ms)','Waiting (ms)','Execution (ms)','Turnaround (ms)','Error'], execution)+'</details>'),
-        ('ETC hasil kalibrasi · batch terakhir', 'Median dua sampel worker_elapsed_ms setelah warmup, dilakukan sebelum batch. Estimasi bukan jaminan waktu aktual.',
+        ('ETC hasil kalibrasi · batch terakhir', 'Versi v2 memakai median 7 sampel RPC per jenis task/worker, setelah warmup, dengan task campuran dan resource polling. Versi pengukuran tersimpan di CSV. Estimasi tetap bisa berbeda dari aktual.',
          '<details><summary>Lihat matriks estimasi waktu eksekusi</summary>'+table(['Jenis','Worker','ETC (ms)'], etc)+'</details>'),
     ]
     content = ''.join('<section><h2>'+escape(title)+'</h2><p>'+escape(note)+'</p>'+body+'</section>' for title,note,body in sections)
     html = '''<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Task Scheduling Sufferage</title><style>
-*{box-sizing:border-box}body{font:15px/1.6 'Segoe UI',Arial,sans-serif;color:#17304b;background:#f2f6fa;margin:0}main{max-width:1460px;padding:36px 28px 64px;margin:auto}h1{font-size:34px;margin:8px 0}h2{font-size:21px;margin:0}p{color:#536780;margin:8px 0 16px}.tag{font-size:12px;color:#2169a6;letter-spacing:2px;text-transform:uppercase;font-weight:700}section{background:white;border:1px solid #dce5ef;border-radius:12px;padding:24px;margin-top:22px}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;white-space:nowrap;font-size:13px;font-variant-numeric:tabular-nums}th,td{text-align:right;border-bottom:1px solid #e6edf4;padding:12px}th{background:#ecf3fa;color:#405e7a;font-size:12px}th:first-child,td:first-child{text-align:left}summary{cursor:pointer;color:#246aab;font-weight:600;padding:10px 0}footer{font-size:12px;color:#63788c;margin-top:24px}.notice{border-left:4px solid #2478b7;padding:10px 18px;background:#e6f0fa}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:24px}.card{background:white;border:1px solid #dce5ef;padding:20px;border-radius:12px}.card strong{display:block;font-size:25px}.card span{font-size:12px;color:#60778e}@media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}main{padding:24px 12px}}
+*{box-sizing:border-box}body{font:15px/1.6 'Segoe UI',Arial,sans-serif;color:#17304b;background:#f2f6fa;margin:0}main{max-width:1460px;padding:36px 28px 64px;margin:auto}h1{font-size:34px;margin:8px 0}h2{font-size:21px;margin:0}p{color:#536780;margin:8px 0 16px}.tag{font-size:12px;color:#2169a6;letter-spacing:2px;text-transform:uppercase;font-weight:700}section{background:white;border:1px solid #dce5ef;border-radius:12px;padding:24px;margin-top:22px}.scroll{overflow:auto}.lane{display:flex;gap:12px;align-items:center;margin:12px 0}.lane strong{width:60px;font-size:12px}.track{position:relative;flex:1;height:32px;background:#edf2f7;border-radius:4px;overflow:hidden}.bar{position:absolute;height:100%;border-right:1px solid white}.legend{font-size:12px}table{border-collapse:collapse;width:100%;white-space:nowrap;font-size:13px;font-variant-numeric:tabular-nums}th,td{text-align:right;border-bottom:1px solid #e6edf4;padding:12px}th{background:#ecf3fa;color:#405e7a;font-size:12px}th:first-child,td:first-child{text-align:left}summary{cursor:pointer;color:#246aab;font-weight:600;padding:10px 0}footer{font-size:12px;color:#63788c;margin-top:24px}.bad{color:#b52235;font-weight:700}.notice{border-left:4px solid #2478b7;padding:10px 18px;background:#e6f0fa}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:24px}.card{background:white;border:1px solid #dce5ef;padding:20px;border-radius:12px}.card strong{display:block;font-size:25px}.card span{font-size:12px;color:#60778e}@media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}main{padding:24px 12px}}
 </style></head><body><main><div class="tag">Distributed Task Scheduling</div><h1>Sufferage Task Scheduler</h1><p>Dataset CSV → scheduler vm210 → empat VM worker → hasil penjadwalan.</p><div class="notice">Model: batch statis, task independen, non-preemptive. Transport HTTP hanya untuk kontrol dan eksekusi task. </div>CARDSCONTENT<footer>Waiting = start − arrival. Turnaround = finish − arrival. Makespan = durasi batch sampai seluruh antrean terminal; throughput = task sukses / makespan. Rata-rata waiting/turnaround hanya task sukses. Kalibrasi di luar makespan. Pengukuran guest tidak mewakili host fisik. Hasil pengujian HTTP lama tidak dibandingkan di sini. Refresh halaman setelah batch selesai.</footer></main></body></html>'''
     summary = latest[2] if latest else {}
     cards = '<div class="cards">'+''.join('<div class="card"><span>'+escape(label)+'</span><strong>'+escape(value)+'</strong></div>' for label,value in [

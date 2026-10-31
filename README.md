@@ -105,8 +105,8 @@ tail -f /var/log/sufferage-scheduler/service.log
 - Success rate, task gagal/skipped, distribusi alokasi worker.
 - CPU/RAM rata-rata dan puncak kelima guest VM, beserta cakupan sampel.
 
-CT memakai `ready_time worker + ETC[task,worker]`. ETC adalah median pengukuran
-waktu worker setelah warmup. Task pada satu worker tidak tumpang tindih secara
+CT memakai `ready_time worker + ETC[task,worker]`. ETC v2 adalah median tujuh sampel durasi RPC scheduler–worker setelah warmup
+seluruh jenis task, dengan urutan campuran dan pemantauan resource aktif. Task pada satu worker tidak tumpang tindih secara
 logis; worker dua vCPU membagi satu task ke dua proses. Task independen dan
 non-preemptive. Sufferage heuristik, tidak dijanjikan optimal.
 
@@ -139,3 +139,16 @@ Untuk mengambil hasil batch yang sudah dikirim tanpa mengeksekusi ulang:
 Hasil HTTP lama tidak digabungkan ke tabel scheduling. Tidak ada password, token,
 disk VM, virtual environment atau CSV hasil mentah yang diunggah. Untuk pengujian
 akhir, ulangi dataset dan ETC yang sama minimal tiga kali dan laporkan variasinya.
+
+## Kualitas ETC dan efisiensi planning
+
+Versi aktif `rpc-median7-v2` menyimpan tujuh sampel RPC per jenis/worker beserta
+median, p90 dan CV. Median tahan terhadap sebagian outlier, tetapi kontensi laptop
+tetap dapat mengubah waktu aktual. Tabel hasil menampilkan MAPE prediksi eksekusi,
+unit kerja, waktu selesai dan jeda akhir tiap worker. Resource tidak dipaksa sama.
+
+Planner mengelompokkan task dengan baris ETC identik (jenis sama). Hanya task
+paling awal dari tiap jenis yang perlu dievaluasi pada setiap langkah karena
+nilai Sufferage-nya identik. Tes differential memastikan seluruh alokasi, CT dan
+tie-break sama dengan perhitungan semua task, hingga batch 500 task. Ini optimasi
+perhitungan, bukan perubahan algoritma penjadwalan.

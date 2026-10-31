@@ -47,7 +47,13 @@ def main():
         if not args.reuse_calibration or not health['calibrated']:
             print('Mengukur ETC ringan/sedang/berat pada setiap worker (di luar waktu batch)...', flush=True)
             calibration = api('/api/calibrate', {})
+            print('Versi ETC:', calibration.get('version','v1'), '| sampel per jenis/worker:', calibration.get('samples_per_cell',2), flush=True)
             print(json.dumps(calibration['etc_ms'], indent=2), flush=True)
+            details = calibration.get('sample_details',{})
+            variation = [cell['rpc_cv_percent'] for values in details.values() for cell in values.values()]
+            if variation:
+                print(f'Variasi CV tertinggi sampel RPC: {max(variation):.2f}% (diagnostik, bukan jaminan akurasi)', flush=True)
+
         submitted = api('/api/batches', dict(tasks=tasks, dataset_name=args.dataset.name,
             dataset_sha256=hashlib.sha256(args.dataset.read_bytes()).hexdigest()))
         run_id = submitted['batch_id']
