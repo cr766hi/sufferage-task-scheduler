@@ -1,11 +1,29 @@
 # Sufferage Task Scheduler
 
-Penjadwalan **task batch statis** pada empat VM worker nyata. Windows membaca
-dataset CSV, vm210 menghitung jadwal Sufferage, lalu mengeksekusi task pada antrean
-masing-masing worker. HTTP dipakai untuk kontrol dan RPC eksekusi task.
+## Anggota Kelompok 7 SOKA A
 
-**Mulai dari [urutan demo](docs/DEMO.md)**, [arsitektur](docs/ARSITEKTUR.md),
-[algoritma dan metrik](docs/SUFFERAGE.md), serta [laporan verifikasi](docs/LAPORAN.md).
+| Nama | NRP |
+|---|---|
+| Imam Mahmud Dalil Fauzan | 5027241100 |
+| Ahmad Yazid Arifuddin | 5027241040 |
+| Christiano Ronaldo Silalahi | 5027241025 |
+| Oscaryavat Viryavan | 5027241053 |
+| Adiwidya Budi Pratama | 5027241012 |
+
+## Laporan dalam File Word
+
+[Unduh laporan (docx)](docs/Laporan_Task_Scheduler_Sufferage.docx)
+
+## Summary
+
+Scheduling **task batch statis** pada empat VM worker. Windows membaca
+dataset CSV, vm210 menghitung jadwal Sufferage, lalu mengeksekusi task pada antrean masing-masing worker. HTTP dipakai untuk kontrol dan RPC eksekusi task.
+
+**Navigasi** :
+- [Demo](docs/DEMO.md)
+- [Arsitektur](docs/ARSITEKTUR.md)
+- [Algoritma dan Metriks](docs/SUFFERAGE.md)
+- [Laporan Verifikasi](docs/LAPORAN.md).
 
 ## Alur
 
@@ -97,13 +115,18 @@ tail -f /var/log/sufferage-scheduler/service.log
 | `legacy/` | Arsip lokal pendekatan HTTP lama, diabaikan Git; versi lama tetap ada di riwayat commit |
 
 ## Metrik evaluasi
-
-- Makespan: waktu dari batch diterima sampai eksekusi antrean terminal.
-- Waiting time: task mulai dieksekusi dikurangi arrival (semua arrival = 0).
-- Turnaround time: task selesai dikurangi arrival.
-- Throughput: task sukses / makespan dalam detik.
-- Success rate, task gagal/skipped, distribusi alokasi worker.
-- CPU/RAM rata-rata dan puncak kelima guest VM, beserta cakupan sampel.
+| Metrik | Definisi |
+|---|---|
+| Makespan | Waktu dari batch diterima sampai eksekusi antrean terminal. |
+| Waiting Time | Waktu task mulai dieksekusi dikurangi arrival (semua arrival = 0). |
+| Turnaround Time | Waktu task selesai dikurangi arrival. |
+| Throughput | Jumlah task sukses / makespan dalam detik. |
+| Success Rate | Persentase task yang berhasil dieksekusi. |
+| Failed/Skipped Tasks | Jumlah task yang gagal atau dilewati (skipped). |
+| Worker Allocation | Distribusi alokasi task pada masing-masing worker. |
+| CPU Usage | Rata-rata dan penggunaan CPU puncak pada kelima guest VM. |
+| RAM Usage | Rata-rata dan penggunaan RAM puncak pada kelima guest VM. |
+| Sample Coverage | Cakupan sampel pengukuran CPU dan RAM pada kelima guest VM. |
 
 CT memakai `ready_time worker + ETC[task,worker]`. ETC v2 adalah median tujuh sampel durasi RPC scheduler–worker setelah warmup
 seluruh jenis task, dengan urutan campuran dan pemantauan resource aktif. Task pada satu worker tidak tumpang tindih secara
@@ -229,10 +252,3 @@ Sufferage untuk menghubungkan pembagian beban dengan keputusan algoritma. Terang
 bahwa CPU persen dinormalisasi terhadap seluruh vCPU, data hilang bukan nol, dan
 perbandingan uji harus memakai dataset/ETC serta kondisi VM yang sama. Grafik ini
 tidak membuktikan keunggulan terhadap algoritma lain. Refresh setelah tes baru.
-
-## Laporan kelompok dalam Word
-
-[Unduh laporan singkat kelompok](docs/Laporan_Task_Scheduler_Sufferage.docx).
-Laporan 7 halaman memuat anggota dan NRP, arsitektur, langkah Sufferage, hasil
-pengujian 240 task, 9 gambar/grafik, dan cara demo termasuk SSH ke VM210.
-Grafik hasil diambil dari halaman HTML pengujian.
